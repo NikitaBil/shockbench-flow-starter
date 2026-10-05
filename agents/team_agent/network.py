@@ -7,8 +7,11 @@ action slots; it does not choose flows, forecast needs or read weekly signals.
 import math
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import IntEnum
 from operator import index
 from types import MappingProxyType
+
+import numpy as np
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,3 +212,193 @@ class StaticNetwork:
             chokes,
             sum(self.edge_transit_weeks[pe] for pe in remaining),
         )
+
+
+class DataSource(IntEnum):
+    CURRENT = 0
+    HISTORY = 1
+    NOMINAL = 2
+    DERIVED = 3
+
+
+def _readonly(values):
+    result = np.array(values, copy=True)
+    result.flags.writeable = False
+    return result
+
+
+@dataclass(frozen=True, slots=True)
+class FieldEstimate:
+    values: np.ndarray
+    observed: np.ndarray
+    source: np.ndarray
+    age_weeks: np.ndarray  # -1 means no remembered observation is being used.
+    nominal: np.ndarray
+
+
+@dataclass(frozen=True, slots=True)
+class RouteStatus:
+    slot_id: int
+    sanction_allowed: bool
+    permission_observed: bool
+    entry_capacity: float
+    snapshot_throughput: float  # Shared downstream resources are not reserved.
+    zero_capacity_edges: tuple[int, ...]
+    closed_chokepoints: tuple[int, ...]
+    uncertain_fields: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NetworkSnapshot:
+    week: int
+    horizon: int
+    fields: object  # Read-only mapping of observation key -> FieldEstimate.
+    routes: tuple[RouteStatus, ...]
+
+
+class NetworkTracker:
+    """V2: current observations, bounded history and labelled nominal estimates.
+
+    Hidden zeroes are ignored. Recent last observations persist for at most
+    max_history_age weeks; older or never-seen entries use nominal assumptions.
+    Estimates are never labelled as current confirmed observations.
+    """
+
+    def __init__(self, config, network=None, max_history_age=4):
+        self.network = network if network is not None else StaticNetwork(config)
+        self.horizon = int(config["T"])
+        self.max_history_age = index(max_history_age)
+        if self.max_history_age < 0:
+            raise ValueError("max_history_age must be nonnegative")
+        static, net = config["static"], self.network
+        E, K, C = len(net.edge_names), len(net.commodity_names), len(net.chokepoints)
+        prohibited = np.zeros((E, K), dtype=float)
+        edge_index = {name: e for e, name in enumerate(net.edge_names)}
+        commodity_index = {name: k for k, name in enumerate(net.commodity_names)}
+        for pair in static["instance"]["prohibitions_at_reset"]:
+            prohibited[edge_index[pair["edge"]], commodity_index[pair["k"]]] = 1
+        kappas = {pool: [] for pool in ("tb", "ct")}
+        for node in net.chokepoints:
+            attrs = static["instance"]["nodes"][node]["chokepoint"]
+            for pool in kappas:
+                kappas[pool].append(attrs["k_c"] * attrs["mu"][pool])
+        self.nominal = {
+            "graph_now.u": np.array([np.nan if u is None else u for u in net.edge_capacity]),
+            "graph_now.c": np.array(static["edges"]["c0"], dtype=float),
+            "graph_now.tau": np.array(net.edge_transit_weeks, dtype=float),
+            "graph_now.prohibited": prohibited,
+            "graph_now.tariff": np.zeros((E, K)),
+            "graph_now.open": np.ones(C),
+            "graph_now.kappa.tb": np.array(kappas["tb"], dtype=float),
+            "graph_now.kappa.ct": np.array(kappas["ct"], dtype=float),
+            "graph_now.war_risk": np.zeros(C),
+            "action_mask": np.array(
+                [not any(prohibited[e, r.commodity_id] for e in r.edges) for r in net.routes], dtype=float
+            ),
+        }
+        self.nominal = MappingProxyType({key: _readonly(value) for key, value in self.nominal.items()})
+        self._history = {
+            key: (value.copy(), np.full(value.shape, -1, dtype=int)) for key, value in self.nominal.items()
+        }
+        self._last_week = 0
+
+    def _resolve(self, observation, key, week):
+        nominal = self.nominal[key]
+        values = np.asarray(observation[key], dtype=float)
+        mask = np.asarray(observation[key + ".observed"])
+        expected_mask_shape = (1,) if key == "action_mask" else nominal.shape
+        if values.shape != nominal.shape or mask.shape != expected_mask_shape:
+            raise ValueError(f"{key}: observation or mask shape does not match config")
+        if not np.all(np.isin(mask, (0, 1))):
+            raise ValueError(f"{key}: observed mask must contain only 0/1")
+        seen = np.broadcast_to(mask == 1, nominal.shape)
+        shown = values[seen]
+        if not np.all(np.isfinite(shown)) or np.any(shown < 0):
+            raise ValueError(f"{key}: observed values must be finite and nonnegative")
+        if key in ("action_mask", "graph_now.prohibited") and not np.all(np.isin(shown, (0, 1))):
+            raise ValueError(f"{key}: observed flags must contain only 0/1")
+        if key == "graph_now.open" and np.any(shown > 1):
+            raise ValueError("graph_now.open: observed fractions must be in [0, 1]")
+        if key in ("graph_now.tau", "graph_now.war_risk") and np.any(shown != np.floor(shown)):
+            raise ValueError(f"{key}: observed values must be integers")
+        if key == "graph_now.war_risk" and np.any(shown > 2):
+            raise ValueError("graph_now.war_risk: unknown class code")
+        remembered, last_seen = (a.copy() for a in self._history[key])
+        remembered[seen], last_seen[seen] = values[seen], week
+        recent = (last_seen >= 1) & (week - last_seen <= self.max_history_age)
+        selected = np.where(recent, remembered, nominal)
+        source = np.where(seen, DataSource.CURRENT, np.where(recent, DataSource.HISTORY, DataSource.NOMINAL))
+        age = np.where(recent, week - last_seen, -1)
+        estimate = FieldEstimate(*map(_readonly, (selected, seen, source, age, nominal)))
+        return estimate, (remembered, last_seen)
+
+    def update(self, observation):
+        week_values = np.asarray(observation["week"])
+        if week_values.shape != (1,):
+            raise ValueError("week must have shape (1,)")
+        week = _checked_index(index(week_values[0]) - 1, self.horizon, "week") + 1
+        if week <= self._last_week:
+            raise ValueError("update must be called once per week, in increasing order")
+        fields, history = {}, {}
+        for key in self.nominal:
+            fields[key], history[key] = self._resolve(observation, key, week)
+        # kappa already includes open. When kappa is hidden, derive it from the
+        # resolved openness and the public k_c*mu formula, labelling the estimate.
+        openness = fields["graph_now.open"]
+        for pool in ("tb", "ct"):
+            key = f"graph_now.kappa.{pool}"
+            field = fields[key]
+            values = np.where(field.observed, field.values, field.nominal * openness.values)
+            source = np.where(
+                field.observed,
+                DataSource.CURRENT,
+                np.where(openness.source == DataSource.NOMINAL, DataSource.NOMINAL, DataSource.DERIVED),
+            )
+            age = np.where(field.observed, 0, openness.age_weeks)
+            fields[key] = FieldEstimate(*map(_readonly, (values, field.observed, source, age, field.nominal)))
+        statuses = []
+        for route in self.network.routes:
+            es, k, ps = list(route.edges), route.commodity_id, list(route.chokepoint_positions)
+            mask = fields["action_mask"]
+            z = fields["graph_now.prohibited"]
+            shown_prohibition = bool(np.any(z.observed[es, k] & (z.values[es, k] == 1)))
+            if shown_prohibition or (mask.observed[route.slot_id] and mask.values[route.slot_id] == 0):
+                allowed, confirmed = False, True
+            elif mask.observed[route.slot_id] or np.all(z.observed[es, k]):
+                allowed, confirmed = True, True
+            else:
+                allowed = bool(mask.values[route.slot_id] and not np.any(z.values[es, k]))
+                confirmed = False
+            u = fields["graph_now.u"].values
+            kappa = fields[f"graph_now.kappa.{route.pool}"].values
+            closed = tuple(c for c, p in zip(route.chokepoints, ps) if openness.values[p] == 0)
+            throughput = min([float(u[e]) for e in es] + [float(kappa[p]) for p in ps])
+            if closed:
+                throughput = 0.0
+            relevant = {
+                "graph_now.u": (es,),
+                "graph_now.c": (es,),
+                "graph_now.tau": (es,),
+                "graph_now.prohibited": (es, k),
+                "graph_now.tariff": (es, k),
+                "graph_now.open": (ps,),
+                f"graph_now.kappa.{route.pool}": (ps,),
+                "graph_now.war_risk": (ps,),
+                "action_mask": (route.slot_id,),
+            }
+            uncertain = tuple(key for key, indices in relevant.items() if not np.all(fields[key].observed[indices]))
+            statuses.append(
+                RouteStatus(
+                    route.slot_id,
+                    allowed,
+                    confirmed,
+                    float(u[route.edge_id]),
+                    throughput,
+                    tuple(e for e in es if u[e] == 0),
+                    closed,
+                    uncertain,
+                )
+            )
+        snapshot = NetworkSnapshot(week, self.horizon, MappingProxyType(fields), tuple(statuses))
+        self._history, self._last_week = history, week
+        return snapshot

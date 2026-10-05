@@ -2,13 +2,13 @@
 
 import copy
 
+import numpy as np
 import pytest
 
-from agents.team_agent.network import StaticNetwork
+from agents.team_agent.network import NetworkTracker, StaticNetwork
 
 
-@pytest.fixture
-def config():
+def make_config():
     return {
         "spaces": {"action": {"flows": {"shape": [5]}}},
         "layout": {"chokepoints": [2, 1]},
@@ -44,6 +44,11 @@ def config():
             "action_slots": {"edge": [0, 0, 7, 4, 6], "k": [0, 0, 1, 0, 0], "lane": [0, 1, 2, None, None]},
         },
     }
+
+
+@pytest.fixture
+def config():
+    return make_config()
 
 
 def test_shared_entry_does_not_collapse_lanes_or_change_indices(config):
@@ -122,6 +127,10 @@ def test_all_routes_against_public_instance_and_pipeline(task):
         config = agent_config_from_reset(env, obs, info)
         instance = load_instance(config["static"]["instance"])
         network = StaticNetwork(config)
+        snapshot = NetworkTracker(config, network).update(obs)
+        assert len(snapshot.routes) == len(network.routes)
+        for key, field in snapshot.fields.items():
+            np.testing.assert_array_equal(field.values[field.observed], obs[key][field.observed])
         assert len(network.routes) == env.action_space["flows"].shape[0]
         for route in network.routes:
             path = (route.edge_id,) if route.lane_id is None else instance.lanes[route.lane_id].edges
