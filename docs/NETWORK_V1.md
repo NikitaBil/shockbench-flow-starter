@@ -137,9 +137,9 @@ There is no claim of RSS improvement for V1. An isolated server check of the
 integrated Agent is still needed; local topology timings are only its share of
 the Small 2 s / Full 4 s budgets, which include episode initialization.
 
-## Next track task
+## Track continuation
 
-V2: read action_mask and observed graph_now constraints, keeping current,
-nominal and unknown values distinct. DeliveryNeed, forecasts and risk models
+V2 is described in [NETWORK_V2.md](NETWORK_V2.md); V3 delivery options are
+described in [DELIVERY_V3.md](DELIVERY_V3.md). DeliveryNeed, forecasts and risk models
 remain Markiyan's inputs; the Agent/act orchestration and scoring remain
 Nikita's responsibilities.

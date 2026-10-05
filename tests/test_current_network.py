@@ -9,8 +9,7 @@ from agents.team_agent.network import DataSource, NetworkTracker
 from tests.test_network import make_config
 
 
-@pytest.fixture
-def current_config():
+def make_current_config():
     cfg = make_config()
     cfg["T"] = 12
     cfg["static"]["commodities"]["v"] = [100.0, 200.0]
@@ -29,6 +28,11 @@ def current_config():
         ],
     }
     return cfg
+
+
+@pytest.fixture
+def current_config():
+    return make_current_config()
 
 
 def observation(cfg, week=1):
