@@ -1,7 +1,8 @@
-"""Native Allocator V1 smoke comparison: separate trajectories, not RSS.
+"""Native allocation smoke comparisons: separate trajectories, not RSS.
 
     uv run python examples/10_network_allocation.py --task=small
     uv run python examples/10_network_allocation.py --task=full
+    uv run python examples/10_network_allocation.py --task=small --queue_eta=True
 
 Freeze both folders before replay; the default team_agent stays heuristic.
 """
@@ -84,7 +85,9 @@ def replay(folder, task, entropy, episode):
         env.close()
 
 
-def main(task="tiny", entropy=12345, episode=0, out=None):
+def main(task="tiny", entropy=12345, episode=0, out=None, queue_eta=False):
+    if not isinstance(queue_eta, bool):
+        raise ValueError("queue_eta must be a boolean")
     folder = Path(out or f"outputs/10_network_allocation/{time.strftime('%Y-%m-%d_%H-%M-%S')}_{task}")
     folder.mkdir(parents=True, exist_ok=False)
     baseline, candidate = folder / "baseline", folder / "candidate"
@@ -93,12 +96,18 @@ def main(task="tiny", entropy=12345, episode=0, out=None):
         shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
         params_path = target / "params.json"
         params = json.loads(params_path.read_text()) if params_path.exists() else {}
-        params["allocation_enabled"] = enabled
+        params["allocation_enabled"] = True if queue_eta else enabled
+        params["queue_eta_enabled"] = queue_eta and enabled
         params_path.write_text(json.dumps(params, indent=2) + "\n", encoding="utf-8")
     hashes = {label: fingerprint(path) for label, path in (("baseline", baseline), ("candidate", candidate))}
     report = {
         "status": "running",
-        "kind": "native_allocator_v1_separate_trajectory_smoke_not_rss",
+        "kind": (
+            "native_queue_eta_vs_allocator_v1_separate_trajectory_smoke_not_rss"
+            if queue_eta
+            else "native_allocator_v1_separate_trajectory_smoke_not_rss"
+        ),
+        "queue_eta_comparison": queue_eta,
         "task": task,
         "entropy": entropy,
         "episode": episode,

@@ -16,7 +16,7 @@ from tests.test_current_network import hide_external, make_current_config, obser
 def api(monkeypatch):
     load(ROOT / "agents" / "team_agent")
     monkeypatch.syspath_prepend(str(ROOT / "agents" / "team_agent"))
-    for name in ("allocation", "delivery", "queue_forecast"):
+    for name in ("allocation", "delivery", "delivery_eta", "queue_forecast"):
         monkeypatch.delitem(sys.modules, name, raising=False)
     allocator = importlib.import_module("allocation").Allocator
     contracts = sys.modules["contracts"]
@@ -290,7 +290,8 @@ def test_real_requests_execute_without_clipping_in_nominal_week(api, task):
         assert record.executed[slot] == pytest.approx(requested, rel=1e-9, abs=1e-9)
 
 
-def test_opt_in_packed_agent_runs_its_real_pipeline(tmp_path):
+@pytest.mark.parametrize("queue_eta", [False, True])
+def test_opt_in_packed_agent_runs_its_real_pipeline(tmp_path, queue_eta):
     import json
     from zipfile import ZipFile
 
@@ -307,7 +308,9 @@ def test_opt_in_packed_agent_runs_its_real_pipeline(tmp_path):
     folder = tmp_path / "unpacked"
     with ZipFile(archive) as zipped:
         zipped.extractall(folder)
-    (folder / "params.json").write_text(json.dumps({"allocation_enabled": True}), encoding="utf-8")
+    (folder / "params.json").write_text(
+        json.dumps({"allocation_enabled": True, "queue_eta_enabled": queue_eta}), encoding="utf-8"
+    )
     files = [p.relative_to(folder).as_posix() for p in folder.rglob("*.py")]
     for name in files:
         assert missing_imports((folder / name).read_bytes(), files) == []
@@ -327,3 +330,159 @@ def test_opt_in_packed_agent_runs_its_real_pipeline(tmp_path):
         )
     finally:
         env.close()
+
+
+def queue_observation(api):
+    obs = observation(api.cfg)
+    obs["graph_now.prohibited"] = obs["graph_now.prohibited"].astype(np.int8)
+    obs["stock.qty"] = np.array([20.0, 7.0, 5.0])
+    obs["stock.qty.observed"] = np.ones(3, dtype=np.int8)
+    return obs
+
+
+def test_queue_eta_empty_book_enables_sea_without_fabricated_zero_forecast(api):
+    obs = queue_observation(api)
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    result = obj.allocate(state(api), [need(due=12)], obs)
+    assert result.flows[1] == 5 and result.flows[4] == 0
+    assert not result.unmet_needs
+    assert any(r.code == "queue_eta_estimate" and "completion week 8" in r.message for r in result.reasons)
+    assert result.override_qty is None and result.release_mode is None
+
+
+def test_queue_eta_loaded_book_changes_choice_to_on_time_direct_route(api):
+    obs = queue_observation(api)
+    queue = api.c.QueueLot("old", 1, 0, 1, "known", 1, 0, api.c.Quantity(20, "observed"))
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    result = obj.allocate(state(api, queues=(queue,)), [need(due=8)], obs)
+    assert result.flows[4] == 5 and result.flows[1] == 0
+    assert any(r.code == "eta_on_time_estimate" for r in result.reasons)
+
+
+def test_queue_eta_known_inbound_competes_without_becoming_dispatch_stock(api):
+    obs = queue_observation(api)
+    inbound = api.c.PipelineLot("inbound", 0, 0, 1, "known", api.c.Quantity(20, "observed"), 2, 4)
+    snapshot = state(api, stock=5, pipeline=(inbound,))
+    result = api.Allocator(api.cfg, queue_eta_enabled=True).allocate(snapshot, [need(due=8)], obs)
+    assert result.flows[4] == 5 and result.flows[1] == 0
+    assert snapshot.available_stock[0, 0].value == 5
+    assert sum(item.used for item in result.resource_usage if item.kind == "stock") == 5
+
+
+def test_queue_eta_uses_full_quantity_without_double_counting_batch_delay(api):
+    obs = queue_observation(api)
+    obs["graph_now.u"][6] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    result = obj.allocate(state(api), [need(quantity=8, due=12)], obs)
+    assert result.flows[1] == 8
+    assert any(r.code == "queue_eta_estimate" and "completion week 9" in r.message for r in result.reasons)
+
+
+def test_queue_eta_later_candidate_cannot_invalidate_selected_eta(api):
+    obs = queue_observation(api)
+    obs["graph_now.u"][3] = 2
+    obs["graph_now.u"][6] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    result = obj.allocate(state(api), [need("a", quantity=2, due=12), need("b", quantity=2, due=12)], obs)
+    assert result.flows[1] == 2
+    assert result.unmet_needs[0].need_id == "b"
+    assert "queue_eta_delays_selected_shipment" in result.unmet_needs[0].reason
+
+
+def test_queue_eta_selected_shipments_share_queue_with_sufficient_throughput(api):
+    obs = queue_observation(api)
+    obs["graph_now.u"][6] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    result = obj.allocate(state(api), [need("a", quantity=2, due=12), need("b", quantity=2, due=12)], obs)
+    assert result.flows[1] == 4 and not result.unmet_needs
+    estimates = [r for r in result.reasons if r.code == "queue_eta_estimate"]
+    assert len(estimates) == 2 and all("completion week 8" in r.message for r in estimates)
+
+
+def test_queue_eta_hidden_own_state_keeps_unknown_and_uses_direct_fallback(api):
+    obs = queue_observation(api)
+    obs["stock.qty.observed"][1] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    result = obj.allocate(state(api), [need(due=12)], obs)
+    assert result.flows[1] == 0 and result.flows[4] == 5
+    assert any("queue_eta_inputs_unknown" in r.message for r in result.reasons if r.code == "queue_eta_forecast_usage")
+
+
+def test_queue_eta_uses_observed_transit_for_downstream_legs(api):
+    obs = queue_observation(api)
+    obs["graph_now.tau"][1] = 3
+    obs["graph_now.u"][6] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    result = obj.allocate(state(api), [need(due=12)], obs)
+    assert result.flows[1] == 5
+    assert any(r.code == "queue_eta_estimate" and "completion week 9" in r.message for r in result.reasons)
+
+
+def test_queue_eta_hidden_transit_is_not_used_as_known_eta(api):
+    obs = queue_observation(api)
+    obs["graph_now.tau.observed"][1] = 0
+    obs["graph_now.u"][6] = 0
+    result = api.Allocator(api.cfg, queue_eta_enabled=True).allocate(state(api), [need(due=12)], obs)
+    assert not np.any(result.flows)
+    assert "queue_eta_transit_unknown" in result.unmet_needs[0].reason
+
+
+def test_queue_eta_budget_is_deterministic_and_reported(api, monkeypatch):
+    monkeypatch.setattr(importlib.import_module("delivery_eta").CandidateETA, "MAX_FORECASTS", 1)
+    obs = queue_observation(api)
+    obs["graph_now.u"][6] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    requests = [need("a", quantity=1, due=12), need("b", destination=3, quantity=1, due=12)]
+    first = obj.allocate(state(api), requests, obs)
+    second = obj.allocate(state(api), requests[::-1], obs)
+    np.testing.assert_array_equal(first.flows, second.flows)
+    assert first.reasons == second.reasons and first.unmet_needs == second.unmet_needs
+    assert "queue_eta_forecast_budget_exhausted" in first.unmet_needs[0].reason
+    assert any("Ran 1/1" in r.message for r in first.reasons if r.code == "queue_eta_forecast_usage")
+
+
+def test_queue_eta_limited_horizon_is_unresolved_not_a_nominal_completion(api, monkeypatch):
+    monkeypatch.setattr(importlib.import_module("delivery_eta").CandidateETA, "MAX_WEEKS", 2)
+    obs = queue_observation(api)
+    obs["graph_now.u"][6] = 0
+    result = api.Allocator(api.cfg, queue_eta_enabled=True).allocate(state(api), [need(due=12)], obs)
+    assert not np.any(result.flows)
+    assert "queue_eta_completion_unresolved" in result.unmet_needs[0].reason
+
+
+@pytest.mark.parametrize("task", ["tiny", "small", "full"])
+def test_queue_eta_real_nominal_sea_dispatch_is_valid_and_unclipped(api, task):
+    import gymnasium as gym
+    from shockbench_flow.dynamics.sim import initial_state, step
+    from shockbench_flow.instance.io import load_instance
+    from shockbench_flow.marks import event_free_marks
+    from shockbench_flow_gym import agent_config_from_reset
+
+    from sbf_starter import env_id
+
+    env = gym.make(env_id(task), entropy=12345)
+    try:
+        obs, info = env.reset(seed=0, options={"episode": 0})
+        cfg = agent_config_from_reset(env, obs, info)
+    finally:
+        env.close()
+    obj = api.Allocator(cfg, queue_eta_enabled=True)
+    for key, value in obj.tracker.nominal.items():
+        obs[key] = np.nan_to_num(value.copy())
+        obs[key + ".observed"] = np.ones(1, dtype=int) if key == "action_mask" else np.isfinite(value)
+    obs["graph_now.prohibited"] = obs["graph_now.prohibited"].astype(np.int8)
+    snapshot = importlib.import_module("state").StateBuilder(cfg).build(obs, obj.network)
+    route = next(
+        route
+        for route in obj.network.routes
+        if route.chokepoints and snapshot.available_stock[route.source_node, route.commodity_id].value > 0
+    )
+    request = need(destination=route.destination_node, quantity=1, due=cfg["T"])
+    request.commodity_id = route.commodity_id
+    result = obj.allocate(snapshot, [request], obs)
+    assert np.any(result.flows)
+    assert any(r.code == "queue_eta_estimate" for r in result.reasons)
+    inst = load_instance(cfg["static"]["instance"])
+    record = step(inst, event_free_marks(inst), initial_state(inst), dict(enumerate(result.flows)))
+    for slot, requested in record.requested.items():
+        assert record.executed[slot] == pytest.approx(requested, rel=1e-9, abs=1e-9)
