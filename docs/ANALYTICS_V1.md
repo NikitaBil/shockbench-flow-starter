@@ -93,6 +93,8 @@ Dataclass у `needs.py`: `need_id`, `destination_node`, `commodity_id`,
   OSAT не ділить throughput порівну. Номінальний Fab BOM використовує
   співвідношення input/output 1:1; `w_scr` — вік обліку scrap у тижнях, а
   `tau` — тривалість у тижнях. Жоден із них не є коефіцієнтом втрати матеріалу.
+  BOM input buffer за замовчуванням дорівнює нулю; додатковий обсяг можна
+  увімкнути окремим `SafetyBufferPolicy(input_buffer_fraction=...)`.
   `e` та публічна fuel share задають пов'язану потребу енергії/палива.
 - Grid fuels — щотижнева потреба для static base load плюс рівномірно
   розкладена по горизонту grounded Fab energy, обмежена поточним deliverable
@@ -108,7 +110,9 @@ Dataclass у `needs.py`: `need_id`, `destination_node`, `commodity_id`,
 
 Виробничий горизонт за замовчуванням 4 тижні; current observed targets
 переносяться на нього як явне припущення. Налаштування:
-`production_horizon`, `safety_stock`, `include_estimated_arrivals`.
+`production_horizon`, `safety_stock`, `include_estimated_arrivals` і окремий
+`safety_buffer_policy`. `safety_stock` як і раніше керує тільки grid `ibar`
+reserve; він не змінює номінальний BOM.
 Останнє за замовчуванням False: V3/WIP оцінки не приховують дефіцит автоматично.
 Arrivals з unknown датою ніколи не покривають конкретний deadline.
 Unknown stock не стає нульовим покриттям: відповідна потреба не генерується,

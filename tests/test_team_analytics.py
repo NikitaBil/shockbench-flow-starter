@@ -606,6 +606,14 @@ def test_fab_nominal_bom_ignores_scrap_window_and_lead_time(api):
 
     original = fab_inputs()
     assert original and sum(original.values()) == pytest.approx(23)
+    buffered_planner = a.needs.NeedPlanner(
+        a.config,
+        production_horizon=1,
+        safety_stock=False,
+        safety_buffer_policy=a.needs.SafetyBufferPolicy(input_buffer_fraction=0.25),
+    )
+    buffered_needs = buffered_planner.plan(state, a.obs, a.network)
+    assert sum(need.quantity for need in buffered_needs if need.reason == "production") > sum(original.values())
     profiles = [a.config["static"]["instance"]["nodes"][node]["fab"] for node in a.config["layout"]["fabs"]]
     old_values = [(profile.get("w_scr", 0), profile.get("tau", 1)) for profile in profiles]
     try:

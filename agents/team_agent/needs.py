@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
+from math import isfinite
 
 from contracts import need_order_key
 from observations import ObservationReader
@@ -33,6 +34,31 @@ def _nominal_fab_inputs(output_quantity: float) -> float:
     return output_quantity
 
 
+@dataclass(frozen=True, slots=True)
+class SafetyBufferPolicy:
+    """Optional fractional buffer for each nominal BOM input.
+
+    It is zero by default and separate from nominal BOM quantities. Existing
+    grid ``ibar`` reserves remain controlled independently by ``safety_stock``.
+    """
+
+    input_buffer_fraction: float = 0.0
+
+    def __post_init__(self):
+        fraction = self.input_buffer_fraction
+        if (
+            isinstance(fraction, bool)
+            or not isinstance(fraction, (int, float))
+            or not isfinite(fraction)
+            or fraction < 0
+        ):
+            raise ValueError("input_buffer_fraction must be a finite nonnegative number")
+
+    def apply(self, nominal_input: float) -> float:
+        """Apply the explicit policy to one nominal input requirement."""
+        return nominal_input * (1.0 + self.input_buffer_fraction)
+
+
 class NeedPlanner:
     def __init__(
         self,
@@ -41,6 +67,7 @@ class NeedPlanner:
         production_horizon=4,
         include_estimated_arrivals=False,
         safety_stock=True,
+        safety_buffer_policy: SafetyBufferPolicy | None = None,
         production_enabled=True,
         shortage_cost_model=True,
     ):
@@ -50,6 +77,7 @@ class NeedPlanner:
         self.production_horizon = production_horizon
         self.include_estimated_arrivals = include_estimated_arrivals
         self.safety_stock = safety_stock
+        self.safety_buffer_policy = safety_buffer_policy or SafetyBufferPolicy()
         self.production_enabled = bool(production_enabled)
         self.shortage_cost_model = bool(shortage_cost_model)
         static = config["static"]
@@ -170,12 +198,13 @@ class NeedPlanner:
                     capacity_left -= target
                     remaining_packages[package] -= target
                     osat_targets.append((node, raw, target))
-                    raw_input_needs[node, raw] += target
+                    buffered_input = self.safety_buffer_policy.apply(target)
+                    raw_input_needs[node, raw] += buffered_input
                     pair = node, self.commodities[raw]
                     requirements[pair].append(
                         (
                             state.week,
-                            target,
+                            buffered_input,
                             2.0,
                             "production",
                             self._shortage_cost(pair, "production"),
@@ -219,7 +248,8 @@ class NeedPlanner:
                     continue
                 remaining_raw[output] -= target
                 pair = node, self.commodities[input_name]
-                inputs: float = _nominal_fab_inputs(target)
+                nominal_inputs: float = _nominal_fab_inputs(target)
+                inputs: float = self.safety_buffer_policy.apply(nominal_inputs)
                 energy = float(profile.get("e", 0.0)) * target
                 grid_name = profile.get("grid")
                 if grid_name:
