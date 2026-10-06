@@ -1,5 +1,12 @@
 # V4 — current-week volume allocation
 
+Historical experiment. The current implementation is aligned with the team's
+Allocator V1 task: see [ALLOCATOR_V1.md](ALLOCATOR_V1.md). In V1 the unauthorized
+fleet_pool contract extension is reverted, deadline/ETA affect candidate
+ranking, unknown completion and current closures are deferred, and repeated
+calls in the same week are deterministic. The results below describe the
+earlier V4 code, not the corrected V1 policy.
+
 This stage implements Vitya's allocation track using the team's existing
 state and needs modules. It changes one main idea: dispatch is assigned
 sequentially to actual needs instead of requesting every nominal slot capacity.

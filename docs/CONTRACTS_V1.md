@@ -10,7 +10,8 @@
 [ANALYTICS_V1.md](ANALYTICS_V1.md). V4 allocator тепер підключається явно через
 `allocation_enabled=true`; за замовчуванням лишається heuristic. Мережа містить
 V2/V3. Актуальний опис злиття, resource accounting і перевірок:
-[ALLOCATION_V4.md](ALLOCATION_V4.md).
+[ALLOCATOR_V1.md](ALLOCATOR_V1.md). Контракт лишився початковим V1; діагностика
+detour fleet передається через наявні reasons, без нового kind resource_usage.
 
 ## Індекси та одиниці
 

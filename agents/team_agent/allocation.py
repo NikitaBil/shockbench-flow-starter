@@ -1,4 +1,4 @@
-"""V4: allocate existing delivery needs against shared current-week resources.
+"""Allocator V1: deadline-aware greedy using the unchanged team contracts.
 
 Future lane edges/pools are not reserved. Current dispatch uses pre-dispatch
 stock; same-week ordinary arrivals, supply and production are unavailable.
@@ -35,6 +35,38 @@ class Allocator:
         self.pools = tuple(config["static"]["commodities"]["pool"])
         self.allowed = tuple(config["static"]["edges"]["K"])
         self.last_snapshot = None
+        self._snapshot_input = None
+
+    def _snapshot(self, observation):
+        week = int(observation["week"][0])
+        keys = ("week",) + tuple(name for field in self.tracker.nominal for name in (field, field + ".observed"))
+        if self.last_snapshot is not None and week == self.last_snapshot.week:
+            if any(not np.array_equal(observation[key], self._snapshot_input[key], equal_nan=True) for key in keys):
+                raise ValueError("network observations changed within a previously evaluated week")
+            return self.last_snapshot
+        snapshot = self.tracker.update(observation)
+        self._snapshot_input = {key: np.array(observation[key], copy=True) for key in keys}
+        self.last_snapshot = snapshot
+        return snapshot
+
+    @staticmethod
+    def _candidate_key(option, need, quantity):
+        # ETA is for the assigned quantity, not a nominal lower bound. The V3
+        # unit probe's batch correction is conservative for current throughput.
+        eta = option.estimated_completion_week
+        if eta is not None:
+            eta += max(0, math.ceil(quantity / option.snapshot_throughput) - 1)
+        late = None if eta is None else max(0, eta - need.due_week)
+        cost = option.transport_cost_per_unit
+        penalty = need.shortage_cost_per_unit_usd
+        economic = cost + (late * penalty if late is not None and penalty is not None else 0)
+        return (
+            2 if eta is None else int(late > 0),
+            economic,
+            eta if eta is not None else math.inf,
+            -quantity,
+            option.slot_id,
+        ), eta
 
     def _weight(self, edge, lane):
         return sum(delta for match, delta in self.fleet_terms.get(edge, ()) if match is None or match == lane)
@@ -49,9 +81,11 @@ class Allocator:
         """
         net, fields = self.network, snapshot.fields
         incomplete = any(issue.startswith(("pipeline:", "queue:")) for issue in getattr(state, "issues", ()))
-        for key in ("pipeline.qty.observed", "queue_lots.qty.observed"):
-            if key in observation and not np.all(observation[key]):
-                incomplete = True
+        # Cargo masks mark live rows/cohorts; zero masks also mark padding.
+        # The parsed state's quality/metadata and own-stock visibility identify
+        # incomplete own state, rather than declaring every empty row unknown.
+        if any(qty.source != "observed" for qty in state.available_stock.values()):
+            incomplete = True
         groups = defaultdict(list)
         positions = {node: p for p, node in enumerate(net.chokepoints)}
 
@@ -108,9 +142,8 @@ class Allocator:
             raise ValueError("allocator requires pre-dispatch stock; same-week supply/arrivals are not dispatchable")
         if state.week != int(observation["week"][0]) or state.horizon != self.config["T"]:
             raise ValueError("state week/horizon does not match observation/config")
-        snapshot = self.tracker.update(observation)
+        snapshot = self._snapshot(observation)
         net = self.network
-        self.last_snapshot = snapshot
         # Unknown/estimated stock is not spent as if physically available.
         stock_start = {
             key: float(qty.value) if qty.source == "observed" and qty.value is not None else 0.0
@@ -130,24 +163,39 @@ class Allocator:
                 cache[key] = self.delivery.options(snapshot, *key)
             remaining = float(need.quantity)
             blocked = set()
-            for option in cache[key]:
-                if remaining <= 0:
+            while remaining > 0:
+                candidates = []
+                for option in cache[key]:
+                    route = net.routes[option.slot_id]
+                    origin = route.source_node, route.commodity_id
+                    status = snapshot.routes[route.slot_id]
+                    if status.closed_chokepoints or status.zero_capacity_edges or status.snapshot_throughput <= 0:
+                        blocked.add("currently_blocked_delivery_route")
+                        continue
+                    if not option.permission_observed:
+                        blocked.add("unconfirmed_permission")
+                        continue
+                    weight = self._weight(route.edge_id, route.lane_id)
+                    quantity = min(remaining, stocks.get(origin, 0.0), float(edges[route.edge_id]))
+                    if weight:
+                        quantity = min(quantity, fleet[route.pool] / weight)
+                    if quantity <= 0:
+                        blocked.add("current_resources_exhausted_or_unknown")
+                        continue
+                    rank, eta = self._candidate_key(option, need, quantity)
+                    if eta is None:
+                        blocked.add("delivery_eta_unknown")
+                        continue
+                    if eta > state.horizon:
+                        blocked.add("estimated_arrival_beyond_horizon")
+                        continue
+                    candidates.append((rank, option, quantity, eta))
+                if not candidates:
                     break
+                _rank, option, qty, eta = min(candidates, key=lambda candidate: candidate[0])
                 route = net.routes[option.slot_id]
                 origin = route.source_node, route.commodity_id
-                if option.no_wait_arrival_week > state.horizon:
-                    blocked.add("earliest_arrival_beyond_horizon")
-                    continue
-                if not option.permission_observed:
-                    blocked.add("unconfirmed_permission")
-                    continue
                 weight = self._weight(route.edge_id, route.lane_id)
-                qty = min(remaining, stocks.get(origin, 0.0), float(edges[route.edge_id]))
-                if weight:
-                    qty = min(qty, fleet[route.pool] / weight)
-                if qty <= 0:
-                    blocked.add("current_resources_exhausted_or_unknown")
-                    continue
                 flows[route.slot_id] += qty
                 stocks[origin] -= qty
                 edges[route.edge_id] -= qty
@@ -157,12 +205,26 @@ class Allocator:
                     DecisionReason(
                         "allocated_current_resources",
                         f"Assigned {qty:g} {route.unit}; full-route transport estimate "
-                        f"{option.transport_cost_per_unit:g} USD/unit; later edges/pools are not reserved.",
+                        f"{option.transport_cost_per_unit:g} USD/unit; conditional ETA week {eta}, "
+                        f"due week {need.due_week}; later edges/pools are not reserved.",
                         need.need_id,
                         route.slot_id,
                     )
                 )
-                if option.uncertain_fields or option.estimated_completion_week is None:
+                reasons.append(
+                    DecisionReason(
+                        "eta_late" if eta > need.due_week else "eta_on_time_estimate",
+                        f"Conditional completion week {eta}; "
+                        + (
+                            "arrives after this need's deadline."
+                            if eta > need.due_week
+                            else "not a guaranteed arrival."
+                        ),
+                        need.need_id,
+                        route.slot_id,
+                    )
+                )
+                if option.uncertain_fields:
                     reasons.append(
                         DecisionReason(
                             "delivery_estimate_uncertain",
@@ -191,12 +253,13 @@ class Allocator:
                 unit = self.config["static"]["units"][net.commodity_names[commodity]]
                 source = "observed" if snapshot.fields["graph_now.u"].observed[edge] else "estimated"
                 usage.append(ResourceUsage("edge", edge, unit, used, float(edge_start[edge]), source))
-        for position, pool in enumerate(("tb", "ct")):
+        for pool in ("tb", "ct"):
             used = fleet_start[pool] - fleet[pool]
             if used > 0:
-                usage.append(
-                    ResourceUsage(
-                        "fleet_pool", position, f"{pool} native-unit weeks", used, fleet_start[pool], "estimated", pool
+                reasons.append(
+                    DecisionReason(
+                        "fleet_budget_usage",
+                        f"Used {used:g} of {fleet_start[pool]:g} residual {pool} native-unit weeks.",
                     )
                 )
             if release_bound[pool] > 0:

@@ -1,4 +1,4 @@
-"""Native Windows V4 smoke comparison: separate trajectories, not RSS.
+"""Native Allocator V1 smoke comparison: separate trajectories, not RSS.
 
     uv run python examples/10_network_allocation.py --task=small
     uv run python examples/10_network_allocation.py --task=full
@@ -98,7 +98,7 @@ def main(task="tiny", entropy=12345, episode=0, out=None):
     hashes = {label: fingerprint(path) for label, path in (("baseline", baseline), ("candidate", candidate))}
     report = {
         "status": "running",
-        "kind": "native_v4_separate_trajectory_smoke_not_rss",
+        "kind": "native_allocator_v1_separate_trajectory_smoke_not_rss",
         "task": task,
         "entropy": entropy,
         "episode": episode,

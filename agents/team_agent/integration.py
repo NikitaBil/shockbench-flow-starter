@@ -162,7 +162,6 @@ class DecisionPipeline:
             "stock": len(stock_keys),
             "edge": len(network.edge_names),
             "chokepoint_pool": len(network.chokepoints),
-            "fleet_pool": 2,
         }
         seen_resources = set()
         for usage in result.resource_usage:
@@ -173,12 +172,10 @@ class DecisionPipeline:
             if key in seen_resources:
                 raise ValueError("resource_usage: report each shared resource only once")
             seen_resources.add(key)
-            if (usage.kind in ("chokepoint_pool", "fleet_pool") and usage.pool not in ("tb", "ct")) or (
-                usage.kind not in ("chokepoint_pool", "fleet_pool") and usage.pool is not None
+            if (usage.kind == "chokepoint_pool" and usage.pool not in ("tb", "ct")) or (
+                usage.kind != "chokepoint_pool" and usage.pool is not None
             ):
-                raise ValueError("resource_usage: pool is required only for chokepoint_pool or fleet_pool")
-            if usage.kind == "fleet_pool" and usage.resource_index != ("tb", "ct").index(usage.pool):
-                raise ValueError("resource_usage: fleet pool index must match tb=0 / ct=1")
+                raise ValueError("resource_usage: pool is required only for chokepoint_pool")
             _text(usage.unit, "resource.unit")
             used = _number(usage.used, "resource.used")
             _quantity(Quantity(usage.limit, usage.limit_source), "resource.limit")
