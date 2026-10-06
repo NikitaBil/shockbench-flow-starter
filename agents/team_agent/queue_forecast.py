@@ -13,8 +13,14 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 import numpy as np
-from contracts import ExpectedArrival, Quantity
-from observations import ObservationReader
+
+
+if __package__:
+    from .contracts import ExpectedArrival, Quantity
+    from .observations import ObservationReader
+else:
+    from contracts import ExpectedArrival, Quantity
+    from observations import ObservationReader
 
 
 ASSUMPTIONS = (

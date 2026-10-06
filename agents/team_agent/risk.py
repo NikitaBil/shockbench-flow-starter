@@ -11,9 +11,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import numpy as np
 
 try:
-    from contracts import RiskState
+    from risk_contracts import RiskState
 except ImportError:
-    from .contracts import RiskState
+    from .risk_contracts import RiskState
 
 
 class RiskAnalyzer:

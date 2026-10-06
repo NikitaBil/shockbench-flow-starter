@@ -4,7 +4,12 @@ import math
 from operator import index
 
 import numpy as np
-from contracts import Quantity
+
+
+if __package__:
+    from .contracts import Quantity
+else:
+    from contracts import Quantity
 
 
 class ObservationReader:
