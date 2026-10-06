@@ -114,3 +114,44 @@ def test_explicit_safety_buffer_is_added_above_nominal(needs_module):
     # requirements include the already-buffered raw requirements upstream.
     assert buffered == {(0, 0): 2.5, (0, 1): 3.75, (1, 4): 3.125, (2, 5): 4.6875}
     assert nominal == production_input_requirements(needs_module, config, observation, state)
+
+
+def test_upstream_requirements_are_time_phased_by_production_lead(needs_module):
+    config, observation, state = bom_case(demand=(0.0, 0.0))
+    config["T"] = 4
+    state.horizon = 4
+    config["static"]["instance"]["nodes"][0]["osat"]["tau"] = 1
+    config["static"]["instance"]["nodes"][1]["fab"]["tau"] = 2
+    config["static"]["instance"]["nodes"][2]["fab"]["tau"] = 2
+    observation["demand_forecast.qty"] = np.zeros((2, 4), dtype=float)
+    observation["demand_forecast.qty"][0, 3] = 2.0
+    observation["demand_forecast.qty.observed"] = np.ones((2, 4), dtype=int)
+    planner = needs_module.NeedPlanner(config, production_horizon=4, safety_stock=False)
+    requirements = planner._requirements(state, needs_module.ObservationReader(observation), [])
+
+    osat_need = requirements[(0, 0)][0]
+    fab_need = requirements[(1, 4)][0]
+    assert (osat_need[0], osat_need[1]) == (3, 2.0)  # Week 4 package less 1 OSAT week.
+    assert (fab_need[0], fab_need[1]) == (1, 2.0)  # OSAT start week 3 less 2 Fab weeks.
+
+
+def test_fab_schedule_backs_out_live_route_eta(needs_module):
+    config, observation, state = bom_case(demand=(0.0, 0.0))
+    config["T"] = 9
+    state.horizon = 9
+    config["static"]["instance"]["nodes"][0]["osat"]["tau"] = 1
+    config["static"]["instance"]["nodes"][1]["fab"]["tau"] = 2
+    observation["demand_forecast.qty"] = np.zeros((2, 9), dtype=float)
+    observation["demand_forecast.qty"][0, 8] = 2.0
+    observation["demand_forecast.qty.observed"] = np.ones((2, 9), dtype=int)
+    observation["graph_now.tau"] = np.asarray([3.0])
+    observation["graph_now.tau.observed"] = np.ones(1, dtype=int)
+    route = SimpleNamespace(source_node=1, edges=(0,))
+    network = SimpleNamespace(routes=(route,), slots_to={(0, 0): (0,)})
+    planner = needs_module.NeedPlanner(config, production_horizon=9, safety_stock=False)
+    requirements = planner._requirements(
+        state, needs_module.ObservationReader(observation), [], network
+    )
+
+    assert requirements[(0, 0)][0][0] == 8  # OSAT input must arrive before OSAT starts.
+    assert requirements[(1, 4)][0][0] == 3  # 9 - 1 OSAT - 3 transit - 2 Fab.

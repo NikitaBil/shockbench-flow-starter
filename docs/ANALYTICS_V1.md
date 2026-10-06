@@ -110,6 +110,17 @@ Dataclass у `needs.py`: `need_id`, `destination_node`, `commodity_id`,
   зв'язками 1:1 з однаковими native units; невідомі одиниці дають `None`.
   Це маржинальна оцінка втрат за припущенням лінійного виробництва, не ціна
   товару чи відкалібрована суспільна шкода.
+- Часові потреби — forecast demand лишається розбитим за абсолютним тижнем.
+  Для package need у тиждень `D` OSAT input receipt deadline дорівнює
+  `max(current_week, D - tau_osat)`. Для Fab output, потрібного OSAT у тиждень
+  `S`, planner віднімає observed ETA найшвидшого сумісного Fab→OSAT route; Fab
+  input receipt deadline додатково віднімає `tau_fab`. Отже Fab input дедлайн
+  реалізує `D - tau_osat - ETA_fab_osat - tau_fab` з обрізанням до поточного
+  тижня. `graph_now.tau` дає live edge ETA; приховані transit times не
+  замінюються статичним `tau0`. Allocator порівнює дедлайн receipt із ETA кожної
+  доступної inbound route, а queue forecast додає спостережену чергу, коли
+  увімкнений. ETA для Fab→OSAT при back-planning не включає майбутні черги, які
+  ще не спостерігаються.
 - Grid safety stock — опціональна кінцева reserve target `ibar` після покриття
   споживання. Це не нова витрата запасу щотижня.
 

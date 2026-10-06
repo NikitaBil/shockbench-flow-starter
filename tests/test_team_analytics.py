@@ -150,14 +150,41 @@ def test_intermediate_arrival_has_unknown_final_date_without_v3(api):
     a = empty(api())
     route = next(route for route in a.network.routes if route.lane_id is not None)
     pipeline(a, route)
+    progress = a.network.transit_progress(route.edge_id, route.lane_id)
+    for edge in progress.remaining_edges:
+        a.obs["graph_now.tau"][edge] += 1
     state = a.state.StateBuilder(a.config).build(a.obs, a.network)
     assert state.pipeline[0].edge_arrival_week == 1
     assert state.arrivals[0].destination_node == route.destination_node
     assert state.arrivals[0].arrival_week is None
-    progress = a.network.transit_progress(route.edge_id, route.lane_id)
     assert state.pipeline[0].destination_node == progress.destination_node
     assert state.pipeline[0].remaining_edges == progress.remaining_edges
-    assert state.pipeline[0].remaining_route_weeks == progress.remaining_nominal_transit_weeks
+    expected_remaining = sum(a.obs["graph_now.tau"][edge] for edge in progress.remaining_edges)
+    assert state.pipeline[0].remaining_route_weeks == expected_remaining
+
+
+def test_route_eta_uses_observed_tau_not_static_route_distance(api):
+    a = empty(api("tiny"))
+    route = next(candidate for candidate in a.network.routes if len(candidate.edges) > 1)
+    isolated_route = SimpleNamespace(
+        routes=(route,),
+        slots_to={(route.destination_node, route.commodity_id): (0,)},
+    )
+    edge = route.edges[-1]
+    planner = a.needs.NeedPlanner(a.config)
+    reader = a.needs.ObservationReader(a.obs)
+    original = planner._minimum_route_transit_weeks(
+        isolated_route, reader, route.source_node, route.destination_node, route.commodity_id
+    )
+    a.obs["graph_now.tau"][edge] += 3
+    changed = planner._minimum_route_transit_weeks(
+        isolated_route,
+        a.needs.ObservationReader(a.obs),
+        route.source_node,
+        route.destination_node,
+        route.commodity_id,
+    )
+    assert changed == original + 3
 
 
 def test_dense_queue_honors_live_mask_and_calendar_is_idempotent(api):
@@ -388,6 +415,15 @@ def test_v3_kappa_is_not_multiplied_by_open_twice(api):
     a.obs["graph_now.open"][:] = 0.5
     forecast = a.forecast.QueueForecaster(a.config).forecast(state, a.obs, a.network)
     assert forecast.completion_weeks["incoming"] == 1 + a.network.edge_transit_weeks[out]
+
+
+def test_v3_completion_uses_live_transit_time_after_queue_release(api):
+    a = empty(api("tiny"))
+    state, route, out, choke = queue_scenario(a, inbound_week=1, old_qty=0, incoming_qty=10)
+    a.obs["graph_now.tau"][out] = 5
+    forecast = a.forecast.QueueForecaster(a.config).forecast(state, a.obs, a.network)
+    release = next(visit for visit in forecast.visits if visit.source_id == "incoming").completion_release_week
+    assert forecast.completion_weeks["incoming"] == release + 5
 
 
 def test_v3_partial_delivery_preserves_total_and_unknown_residual(api):

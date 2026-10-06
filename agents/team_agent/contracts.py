@@ -102,6 +102,11 @@ class DeliveryNeed(Protocol):
     """Implemented/produced by the needs owner. Overdue weeks remain overdue.
 
     quantity is a requested amount in the commodity's native units.
+    due_week is the absolute receipt deadline at this destination. For an
+    upstream production need it is back-planned from downstream demand by the
+    relevant production lead time and, where known, current source-to-consumer
+    transit ETA. The allocator evaluates each candidate's actual ETA against
+    this receipt deadline, which implies a route-specific latest order week.
     shortage_cost_per_unit_usd is marginal USD per native unit for one week,
     or None if unknown; it is not a total cost or a tariff percentage.
     confidence is None unless a [0, 1] forecast confidence has a stated meaning.
