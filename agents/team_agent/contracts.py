@@ -134,11 +134,13 @@ class ResourceUsage:
 
     resource_index: stock -> layout.stock_slots row, edge -> static.edges row,
     chokepoint_pool -> layout.chokepoints position (NOT its node ID).
+    fleet_pool -> 0 for tb, 1 for ct; units are native-unit weeks and the
+    reported limit is residual after bounding today's automatic release usage.
     unit must state native quantity units. limit_source refers to the limit;
     limit=None and source='unknown' means there is no confirmed limit.
     """
 
-    kind: Literal["stock", "edge", "chokepoint_pool"]
+    kind: Literal["stock", "edge", "chokepoint_pool", "fleet_pool"]
     resource_index: int
     unit: str
     used: float

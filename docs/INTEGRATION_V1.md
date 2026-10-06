@@ -1,5 +1,11 @@
 # Integration V1: Nikita's handoff
 
+Update 2026-10-06: all remote branches are merged into network-delivery; the
+newer network V2/V3 and opt-in V4 allocator are present. See
+[ALLOCATION_V4.md](ALLOCATION_V4.md) for current wiring and measured limitations.
+The default Agent remains heuristic. Statements below about modules not yet
+wired describe the original V1 handoff.
+
 Follow-up: `docs/CONTRACTS_V1.md` describes the implemented handoff interfaces,
 optional decision pipeline and final action gate. The original measurements
 below refer to V1 before those additional files; repeat Linux checks for the

@@ -26,7 +26,10 @@ class Agent:
         self.config = config
         self.network = StaticNetwork(config)
         self.validator = ActionValidator(config)
-        self.pipeline = pipeline if pipeline is not None else build_pipeline(config, self.network)
+        enabled = PARAMS.get("allocation_enabled", False)
+        if not isinstance(enabled, bool):
+            raise ValueError("allocation_enabled must be a boolean")
+        self.pipeline = pipeline if pipeline is not None else build_pipeline(config, self.network, enabled=enabled)
         self.last_allocation = None
         self.cap = np.array(
             [self.network.edge_capacity[route.edge_id] for route in self.network.routes], dtype=float

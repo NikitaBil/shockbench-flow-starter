@@ -7,8 +7,10 @@
 У `contracts.py` немає обчислень: `StateSnapshot` та `DeliveryNeed` залишаються
 структурними інтерфейсами `Protocol`. Реальні dataclasses і модулі тепер є в
 `state.py`, `needs.py`, `queue_forecast.py`; опис реалізації та припущень:
-[ANALYTICS_V1.md](ANALYTICS_V1.md). Алокатор ще не підключено.
-`network.py` Віті не змінювався.
+[ANALYTICS_V1.md](ANALYTICS_V1.md). V4 allocator тепер підключається явно через
+`allocation_enabled=true`; за замовчуванням лишається heuristic. Мережа містить
+V2/V3. Актуальний опис злиття, resource accounting і перевірок:
+[ALLOCATION_V4.md](ALLOCATION_V4.md).
 
 ## Індекси та одиниці
 
