@@ -15,8 +15,10 @@ Strictly isolates backlog, current consumption, production requirements,
 and safety stocks without masking urgent deficits.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
+
 import numpy as np
+
 
 try:
     from contracts import DeliveryNeed, StateSnapshot
@@ -140,6 +142,7 @@ class NeedsForecaster:
             # Cumulative stock projection at this sink
             curr_stock_item = snapshot.stock.get((sink_node, comm_id))
             running_stock = curr_stock_item.qty if curr_stock_item else 0.0
+            arrival_cursor = current_week
 
             n_horizons = forecast_qty.shape[1] if forecast_qty.ndim == 2 else len(forecast_qty)
             for h in range(min(8, n_horizons)):
@@ -152,11 +155,13 @@ class NeedsForecaster:
                 if not is_obs or d_val <= 0.0:
                     continue
 
-                # Add confirmed arrivals due up to this week
-                for arr_w in range(current_week, due_week + 1):
+                # Add each calendar week once, even when earlier arrivals
+                # remain in the cumulative stock projection.
+                for arr_w in range(arrival_cursor, due_week + 1):
                     cal_entry = snapshot.arrival_calendar.get((sink_node, comm_id, arr_w))
                     if cal_entry:
                         running_stock += cal_entry.confirmed_qty + cal_entry.estimated_qty
+                arrival_cursor = due_week + 1
 
                 # Net need after subtracting consumption
                 if running_stock < d_val:
