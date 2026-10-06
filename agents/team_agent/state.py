@@ -93,9 +93,15 @@ class StateBuilder:
             if edge is not None and status != "unknown":
                 progress = network.transit_progress(edge, lane)
             destination = None if progress is None else progress.destination_node
+            remaining_edges = () if progress is None else progress.remaining_edges
+            remaining_weeks = None if progress is None else progress.remaining_nominal_transit_weeks
             lot_id = f"pipeline:{edge}:{commodity}:{status}:{lane}:{due}:{row}"
             qty = reader.quantity("pipeline.qty", row)
-            pipeline.append(PipelineLot(lot_id, edge, commodity, lane, status, qty, due, destination))
+            pipeline.append(
+                PipelineLot(
+                    lot_id, edge, commodity, lane, status, qty, due, destination, remaining_edges, remaining_weeks
+                )
+            )
             if edge is None or status == "unknown" or due is None:
                 issues.append(f"{lot_id}:incomplete_route_or_time")
             if destination is not None:

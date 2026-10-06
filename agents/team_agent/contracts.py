@@ -46,6 +46,8 @@ class PipelineLot:
     quantity: Quantity
     edge_arrival_week: int | None
     destination_node: int | None
+    remaining_edges: tuple[int, ...] = ()
+    remaining_route_weeks: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
