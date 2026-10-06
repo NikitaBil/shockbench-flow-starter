@@ -90,8 +90,10 @@ Dataclass у `needs.py`: `need_id`, `destination_node`, `commodity_id`,
   береться з `static.sinks.pi`.
 - Fab/OSAT inputs — лише від published downstream package forecast, обмежені
   observed `cap_eff`/`thr_eff`; без forecast capacity не створює потребу.
-  OSAT не ділить throughput порівну. Fab BOM враховує `w_scr/tau`; `e` та
-  публічна fuel share задають пов'язану потребу енергії/палива.
+  OSAT не ділить throughput порівну. Номінальний Fab BOM використовує
+  співвідношення input/output 1:1; `w_scr` — вік обліку scrap у тижнях, а
+  `tau` — тривалість у тижнях. Жоден із них не є коефіцієнтом втрати матеріалу.
+  `e` та публічна fuel share задають пов'язану потребу енергії/палива.
 - Grid fuels — щотижнева потреба для static base load плюс рівномірно
   розкладена по горизонту grounded Fab energy, обмежена поточним deliverable
   `G_bar`, за public fuel shares. Marginal shortage cost для sink дорівнює

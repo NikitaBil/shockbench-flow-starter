@@ -22,6 +22,17 @@ class DeliveryNeed:
     assumptions: tuple[str, ...] = ()
 
 
+def _nominal_fab_inputs(output_quantity: float) -> float:
+    """Return nominal raw input for the current one-to-one Fab BOM proxy.
+
+    Fab ``w_scr`` is the scrap observation window in weeks; it is not a
+    fractional yield loss. ``tau`` is a duration as well. Neither belongs in
+    the nominal material ratio. Any yield loss or reserve needs its own
+    explicitly modeled policy parameter.
+    """
+    return output_quantity
+
+
 class NeedPlanner:
     def __init__(
         self,
@@ -208,7 +219,7 @@ class NeedPlanner:
                     continue
                 remaining_raw[output] -= target
                 pair = node, self.commodities[input_name]
-                inputs = target * (1.0 + float(profile.get("w_scr", 0.0)) / max(float(profile.get("tau", 1)), 1.0))
+                inputs: float = _nominal_fab_inputs(target)
                 energy = float(profile.get("e", 0.0)) * target
                 grid_name = profile.get("grid")
                 if grid_name:
@@ -221,7 +232,7 @@ class NeedPlanner:
                         "production",
                         self._shortage_cost(pair, "production"),
                         (
-                            f"BOM: {input_name} per {output} includes nominal scrap factor w_scr/tau",
+                            f"BOM: {input_name} per {output} uses the nominal one-to-one input ratio",
                             f"target {target:g} output units is bounded by downstream package forecast "
                             "and observed capacity",
                         ),

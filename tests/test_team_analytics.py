@@ -578,6 +578,45 @@ def test_existing_osat_output_and_fab_output_reduce_production_targets(api):
     assert not any(need.reason == "production" and need.destination_node in fab_nodes for need in needs)
 
 
+def test_fab_nominal_bom_ignores_scrap_window_and_lead_time(api):
+    a = empty(api("full"))
+    pair = tuple(a.config["layout"]["demands"][0])
+    package = a.config["static"]["commodities"]["id"][pair[1]]
+    nodes = a.config["layout"]["osats"]
+    matching = [
+        node for node in nodes
+        if package in a.config["static"]["instance"]["nodes"][node].get("osat", {}).get("packages", {}).values()
+    ]
+    if not matching:
+        pytest.skip("fixture demand commodity has no OSAT conversion")
+    a.obs["graph_now.osat.thr_eff"][:] = 100
+    a.obs["graph_now.osat.thr_eff.observed"][:] = 1
+    a.obs["graph_now.fab.cap_eff"][:] = 10000
+    a.obs["graph_now.fab.cap_eff.observed"][:] = 1
+    a.obs["demand_forecast.qty"][0, 0] = 23
+    state = a.state.StateBuilder(a.config).build(a.obs, a.network)
+    planner = a.needs.NeedPlanner(a.config, production_horizon=1, safety_stock=False)
+
+    def fab_inputs():
+        return {
+            (need.destination_node, need.commodity_id): need.quantity
+            for need in planner.plan(state, a.obs, a.network)
+            if need.reason == "production" and need.destination_node in a.config["layout"]["fabs"]
+        }
+
+    original = fab_inputs()
+    assert original and sum(original.values()) == pytest.approx(23)
+    profiles = [a.config["static"]["instance"]["nodes"][node]["fab"] for node in a.config["layout"]["fabs"]]
+    old_values = [(profile.get("w_scr", 0), profile.get("tau", 1)) for profile in profiles]
+    try:
+        for profile in profiles:
+            profile["w_scr"], profile["tau"] = 99_999, 1
+        assert fab_inputs() == original
+    finally:
+        for profile, (w_scr, tau) in zip(profiles, old_values, strict=True):
+            profile["w_scr"], profile["tau"] = w_scr, tau
+
+
 def test_unknown_stock_does_not_create_a_zero_based_replenishment(api):
     a = empty(api())
     pair = tuple(a.config["layout"]["demands"][0])

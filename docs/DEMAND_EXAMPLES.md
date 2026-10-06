@@ -14,10 +14,13 @@ realized demand.
 
 ## Fab and OSAT BOM
 
-For a Fab with `w_scr=2`, `tau=8`, `e=0.002 GWh/output`, a grounded output
-target of 100 units requires `100 * (1 + 2/8) = 125` input units and
-`100 * 0.002 = 0.2 GWh` energy. With the associated grid's fuel share 0.5,
-the fuel target is `0.2 * 0.5 = 0.1 GWh`. The Fab output target cannot exceed
+For a Fab with `w_scr=2 weeks` and `tau=8 weeks`, a grounded output target
+of 100 units requires 100 nominal input units under the current 1:1 BOM proxy.
+`w_scr` is a scrap observation window, not a material loss rate, and `tau`
+is a duration; neither scales nominal BOM quantities. With `e=0.002
+GWh/output`, the target requires `100 * 0.002 = 0.2 GWh` energy. With the
+associated grid's fuel share 0.5, the fuel target is `0.2 * 0.5 = 0.1 GWh`.
+The Fab output target cannot exceed
 published downstream package demand or observed effective Fab capacity over
 the configured horizon. An OSAT with effective throughput 40, compatible
 downstream demand 23, and 8 units of finished package inventory targets at
