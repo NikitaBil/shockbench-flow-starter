@@ -181,6 +181,59 @@ def test_wip_gross_observed_output_estimated(api):
     assert all(item.quantity.source == "estimated" for item in state.arrivals if item.source_kind == "wip")
 
 
+def test_indirect_shortage_cost_is_disabled_by_default(api):
+    a = api("tiny")
+    planner = a.needs.NeedPlanner(a.config)
+    grid = a.config["layout"]["grids"][0]
+    grid_profile = planner.profiles[grid]["grid"]
+    fuel_name = next(name for name in grid_profile["shares"] if name in planner.commodities)
+    fuel = planner.commodities[fuel_name]
+    reader = a.needs.ObservationReader(a.obs)
+
+    assert planner.shortage_cost_model is False
+    assert planner._shortage_cost((grid, fuel), "grid_fuel", reader) is None
+
+
+def test_enabled_grid_voll_uses_schema_units_and_fab_marginal_value(api):
+    a = api("tiny")
+    planner = a.needs.NeedPlanner(a.config, shortage_cost_model=True)
+    static = a.config["static"]
+    grid = a.config["layout"]["grids"][0]
+    grid_name = static["nodes"]["id"][grid]
+    profile = planner.profiles[grid]["grid"]
+    fuel_name = next(name for name in profile["shares"] if name in planner.commodities)
+    fuel = planner.commodities[fuel_name]
+    assert static["units"][fuel_name] in {"GWh", "GWh fuel"}
+
+    expected_fab_value = []
+    for row, fab_node in enumerate(a.config["layout"]["fabs"]):
+        fab = planner.profiles[fab_node]["fab"]
+        if fab.get("grid") != grid_name or not fab.get("e"):
+            continue
+        downstream = planner._downstream_penalty(fab["product"])
+        restoration = a.needs.ObservationReader(a.obs).number("graph_now.fab.R", row)
+        if downstream is not None and restoration is not None:
+            expected_fab_value.append(downstream * restoration / float(fab["e"]))
+
+    observed = planner._shortage_cost(
+        (grid, fuel), "grid_fuel", a.needs.ObservationReader(a.obs)
+    )
+    assert observed == pytest.approx(float(profile["voll"]) + max(expected_fab_value, default=0.0))
+
+
+def test_production_indirect_cost_requires_matching_bom_units(api):
+    a = api("tiny")
+    planner = a.needs.NeedPlanner(a.config, shortage_cost_model=True)
+    fab_node = a.config["layout"]["fabs"][0]
+    fab = planner.profiles[fab_node]["fab"]
+    input_id = planner.commodities[fab["input"]]
+    value = planner._shortage_cost((fab_node, input_id), "production")
+    if a.config["static"]["units"][fab["input"]] != a.config["static"]["units"][fab["product"]]:
+        assert value is None
+    else:
+        assert value == planner._downstream_penalty(fab["product"])
+
+
 @pytest.mark.parametrize("first_demand", [0.0, 10.0])
 def test_each_arrival_used_once_including_zero_demand_week(api, first_demand):
     a = empty(api())

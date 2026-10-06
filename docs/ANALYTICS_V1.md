@@ -100,11 +100,16 @@ Dataclass у `needs.py`: `need_id`, `destination_node`, `commodity_id`,
   розкладена по горизонту grounded Fab energy, обмежена поточним deliverable
   `G_bar`, за public fuel shares. Marginal shortage cost для sink дорівнює
   `static.sinks.pi` (USD/native unit/week). Для grid fuel формула
-  `VOLL [USD/MWh] * fuel_share * 1000 [MWh/GWh]`, якщо fuel unit — GWh;
-  припущення — втрачена генерація дорівнює частці нестачі fuel. Для інших
-  виробничих inputs використовується найбільша sink penalty як conservative
-  proxy при BOM 1:1. Ціни товарів не використовуються; це оцінки збитку, не
-  відкалібровані значення.
+  Модель indirect shortage costs вимкнена за замовчуванням параметром
+  `shortage_cost_model`. У схемі VOLL має одиниці USD/GWh, а fuel stock — GWh;
+  гранична оцінка для grid fuel дорівнює `VOLL + max(pi * R / e)` для
+  unit-сумісних шляхів до Fab та sink. `pi` — USD/output/week, `R` — безрозмірний
+  restoration factor, `e` — GWh/output, тому обидва доданки мають USD/GWh/week.
+  Fuel share обмежує segment generation, але не є коефіцієнтом перерахунку
+  fuel у generation. Для виробничих inputs `pi` поширюється лише явними BOM
+  зв'язками 1:1 з однаковими native units; невідомі одиниці дають `None`.
+  Це маржинальна оцінка втрат за припущенням лінійного виробництва, не ціна
+  товару чи відкалібрована суспільна шкода.
 - Grid safety stock — опціональна кінцева reserve target `ibar` після покриття
   споживання. Це не нова витрата запасу щотижня.
 

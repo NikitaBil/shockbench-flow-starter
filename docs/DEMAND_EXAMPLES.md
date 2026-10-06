@@ -29,14 +29,25 @@ inventory are netted before any wafer target is created.
 
 ## Indirect shortage damage
 
-For a grid with `VOLL=4,125,277.26 USD/MWh` and fuel share `0.5 GWh fuel / GWh
-generation`, one GWh of fuel shortage is valued at
-`4,125,277.26 * 0.5 * 1,000 = 2,062,638,630 USD/GWh fuel/week` under the explicit
-assumption that the fuel shortfall reduces generation by the published share.
-This is a marginal lost-service proxy; it is not the fuel's purchase price.
-For other production inputs, the current documented fallback inherits the
-largest sink penalty under a 1:1 BOM proxy. Neither proxy is calibrated, so
-`confidence` remains `None`.
+The optional `shortage_cost_model` is disabled by default. Sink demand uses
+published `pi` in USD per native unit per weekly cost period. For an enabled
+grid fuel estimate, the schema's VOLL is USD/GWh (not USD/MWh); fuel stock is
+also GWh, and the simulator caps each generation segment by its fuel stock.
+Thus one marginal GWh of fuel shortage can remove at most one GWh of
+generation. The model's rate is `VOLL + max(pi * R / e)` across connected Fabs
+reachable through a unit-compatible 1:1 BOM, where `pi` is USD/output/week,
+`R` is dimensionless restoration, and `e` is GWh/output. Each term is therefore
+USD/GWh/week. Fuel share limits the segment's generation cap and is not a
+conversion ratio. Unknown energy units, Fab restoration, or a compatible
+downstream penalty leave the indirect estimate unavailable. This is a
+marginal proxy under the simulator's linear segment and Fab production
+assumptions, not a calibrated purchase or social cost.
+
+For a production input, the enabled model propagates the downstream sink `pi`
+only along declared 1:1 links whose native units match. It returns no estimate
+when that chain cannot be established. The allocator applies the resulting
+USD/(input unit * week) rate to late input units and weeks. Confidence remains
+`None`; the model is disabled until episode-level unit validation is complete.
 
 To reproduce an episode's structured output, build the state and needs with
 `StateBuilder` and `NeedPlanner`, then call

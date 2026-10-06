@@ -69,7 +69,7 @@ class NeedPlanner:
         safety_stock=True,
         safety_buffer_policy: SafetyBufferPolicy | None = None,
         production_enabled=True,
-        shortage_cost_model=True,
+        shortage_cost_model=False,
     ):
         if not isinstance(production_horizon, int) or isinstance(production_horizon, bool) or production_horizon < 1:
             raise ValueError("production_horizon must be a positive integer")
@@ -89,12 +89,39 @@ class NeedPlanner:
         self._backlog_since = {}
         self.last_issues = ()
 
-    def _shortage_cost(self, pair, reason):
-        """USD/(native unit * week): sink pi; otherwise propagated lost-value proxy.
+    def _downstream_penalty(self, output_name):
+        """Return max reachable sink penalty through the declared 1:1 BOM.
 
-        Assumption: indirect inputs inherit downstream value per unit. Grid fuel
-        uses node VOLL ($/MWh) times the observed fuel share and commodity-unit
-        conversion (GWh -> MWh). This is a transparent marginal proxy, not price.
+        Sink ``pi`` has units USD/(sink unit * weekly cost period). The BOM
+        currently has no conversion coefficients, so propagation is allowed
+        only when adjacent commodity units match exactly.
+        """
+        units = self.config["static"].get("units", {})
+        candidates = []
+        for osat_node in self.config["layout"]["osats"]:
+            profile = self.profiles[osat_node].get("osat", {}).get("packages", {})
+            for raw, package in profile.items():
+                if raw != output_name:
+                    continue
+                if units.get(raw) != units.get(package):
+                    continue
+                product = self.commodities[package]
+                candidates.extend(
+                    pi for (sink, commodity), pi in self.penalties.items() if commodity == product
+                )
+        return max(candidates, default=None)
+
+    def _shortage_cost(self, pair, reason, reader=None):
+        """Marginal damage in USD per native input unit per weekly period.
+
+        The optional model propagates published sink ``pi`` through explicit
+        1:1 BOM links. For grid fuel, one GWh of unavailable fuel removes at
+        most one GWh of segment generation (the simulator's segment stock is
+        also GWh); its damage is grid VOLL [USD/GWh] plus the lost Fab output
+        value [USD/output/week] times ``R/e`` [output/GWh]. Fuel shares set the
+        segment's generation cap and are not a fuel conversion factor. The
+        Fab term is a conservative max across Fabs connected to this grid.
+        Unknown/mismatched units or energy observations disable the estimate.
         """
         if not self.shortage_cost_model:
             return None
@@ -106,13 +133,45 @@ class NeedPlanner:
         if reason == "grid_fuel" and "grid" in profile:
             grid = profile["grid"]
             name = self.config["static"]["commodities"]["id"][commodity]
-            share = float(grid.get("shares", {}).get(name, 0.0))
+            if self.config["static"].get("units", {}).get(name) not in {"GWh", "GWh fuel"}:
+                return None
+            if float(grid.get("shares", {}).get(name, 0.0)) <= 0.0:
+                return None
             voll = float(grid.get("voll", 0.0))
-            # fuel is GWh in the shipped instances; VOLL is USD/MWh.
-            return voll * share * 1000.0
-        # Production inputs inherit the best published downstream unit penalty;
-        # one native input unit is assumed to protect one output unit (BOM proxy).
-        return max(self.penalties.values(), default=0.0) or None
+            if reader is None:
+                return None
+            terms = []
+            for row, fab_node in enumerate(self.config["layout"]["fabs"]):
+                fab = self.profiles[fab_node].get("fab", {})
+                if fab.get("grid") != self.config["static"]["nodes"]["id"][node]:
+                    continue
+                e = float(fab.get("e", 0.0))  # GWh per output unit
+                penalty = self._downstream_penalty(fab.get("product"))
+                restoration = reader.number("graph_now.fab.R", row)
+                if e <= 0 or penalty is None or restoration is None:
+                    continue
+                terms.append(penalty * restoration / e)
+            return voll + max(terms, default=0.0)
+        if reason == "production":
+            input_name = self.config["static"]["commodities"]["id"][commodity]
+            if "osat" in profile:
+                package = profile["osat"].get("packages", {}).get(input_name)
+                units = self.config["static"].get("units", {})
+                if package is None or units.get(input_name) != units.get(package):
+                    return None
+                package_id = self.commodities[package]
+                return max(
+                    (pi for (sink, item), pi in self.penalties.items() if item == package_id),
+                    default=None,
+                )
+            for fab_node in self.config["layout"]["fabs"]:
+                fab = self.profiles[fab_node].get("fab", {})
+                if fab_node != node or fab.get("input") != input_name:
+                    continue
+                if self.config["static"].get("units", {}).get(input_name) != self.config["static"].get("units", {}).get(fab.get("product")):
+                    return None
+                return self._downstream_penalty(fab.get("product"))
+        return None
 
     def _coverage(self, state, pair, cutoff_week):
         stock = state.available_stock.get(pair)
@@ -290,7 +349,7 @@ class NeedPlanner:
                             float(share) * planned_generation,
                             3.0,
                             "grid_fuel",
-                            self._shortage_cost(pair, "grid_fuel"),
+                            self._shortage_cost(pair, "grid_fuel", reader),
                             (
                                 "fuel requirement covers static base load plus grounded Fab energy",
                                 "generation is capped by observed deliverable G_bar, "
