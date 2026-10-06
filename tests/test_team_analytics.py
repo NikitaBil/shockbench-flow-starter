@@ -154,6 +154,10 @@ def test_intermediate_arrival_has_unknown_final_date_without_v3(api):
     assert state.pipeline[0].edge_arrival_week == 1
     assert state.arrivals[0].destination_node == route.destination_node
     assert state.arrivals[0].arrival_week is None
+    progress = a.network.transit_progress(route.edge_id, route.lane_id)
+    assert state.pipeline[0].destination_node == progress.destination_node
+    assert state.pipeline[0].remaining_edges == progress.remaining_edges
+    assert state.pipeline[0].remaining_route_weeks == progress.remaining_nominal_transit_weeks
 
 
 def test_dense_queue_honors_live_mask_and_calendar_is_idempotent(api):
@@ -464,6 +468,36 @@ def test_v3_tandem_queues_advance_without_duplicating_cargo(api):
     assert state.queue_forecast.completion_weeks[source] == expected
 
 
+def test_retrospective_backtest_uses_latest_prediction_and_aggregate_actuals(api):
+    a = empty(api("tiny"))
+    builder = a.state.StateBuilder(a.config)
+    state = builder.build(a.obs, a.network)
+    node, commodity = tuple(a.config["layout"]["stock_slots"][0])
+
+    def forecast(qty):
+        arrival = a.contracts.ExpectedArrival(
+            f"p{qty}", "grouped", "queue", node, commodity, a.contracts.Quantity(qty, "estimated"), 3, "estimated"
+        )
+        return a.forecast.QueueForecast((arrival,), (), {})
+
+    actual = a.contracts.ExpectedArrival(
+        "observed", "wire-row", "pipeline", node, commodity, a.contracts.Quantity(7, "observed"), 3, "observed"
+    )
+    observed_state = replace(state, week=3, arrivals=(actual,))
+    rows = a.forecast.retrospective_backtest(((1, forecast(5)), (2, forecast(9))), (observed_state,))
+    assert rows == (
+        {
+            "destination_node": node,
+            "commodity_id": commodity,
+            "arrival_week": 3,
+            "predicted_quantity": 9,
+            "actual_quantity": 7,
+            "absolute_error": 2,
+            "cargo_identity": "aggregate; grouped lots have no stable IDs",
+        },
+    )
+
+
 def test_unknown_demand_does_not_erase_arrivals_before_known_demand(api):
     a = empty(api())
     state = a.state.StateBuilder(a.config).build(a.obs, a.network)
@@ -484,7 +518,7 @@ def test_unknown_demand_does_not_erase_arrivals_before_known_demand(api):
     assert planner.last_issues and all(need.confidence is None for need in needs)
 
 
-def test_osat_requests_share_one_throughput_budget(api):
+def test_osat_requests_are_bounded_by_downstream_demand(api):
     a = empty(api("full"))
     a.obs["graph_now.osat.thr_eff"][:] = 100
     a.obs["graph_now.osat.thr_eff.observed"][:] = 1
@@ -493,7 +527,70 @@ def test_osat_requests_share_one_throughput_budget(api):
     needs = planner.plan(state, a.obs, a.network)
     for node in a.config["layout"]["osats"]:
         production = [need for need in needs if need.destination_node == node and need.reason == "production"]
-        assert sum(need.quantity for need in production) == pytest.approx(100)
+        assert sum(need.quantity for need in production) == 0
+    # One published sink forecast activates only its compatible package BOM.
+    demand_row = 0
+    a.obs["demand_forecast.qty"][demand_row, 0] = 23
+    needs = planner.plan(state, a.obs, a.network)
+    osat_nodes = set(a.config["layout"]["osats"])
+    assert (
+        sum(need.quantity for need in needs if need.reason == "production" and need.destination_node in osat_nodes)
+        <= 23
+    )
+    exported = planner.export_examples(needs)
+    assert all(row["priority_rank"] == i for i, row in enumerate(exported, 1))
+    assert all("assumptions" in row and row["confidence"] is None for row in exported)
+
+
+def test_existing_osat_output_and_fab_output_reduce_production_targets(api):
+    a = empty(api("full"))
+    demand_pair = tuple(a.config["layout"]["demands"][0])
+    package = a.config["static"]["commodities"]["id"][demand_pair[1]]
+    osat_nodes = a.config["layout"]["osats"]
+    matching = [
+        node
+        for node in osat_nodes
+        if package in a.config["static"]["instance"]["nodes"][node].get("osat", {}).get("packages", {}).values()
+    ]
+    if not matching:
+        pytest.skip("fixture demand commodity has no OSAT conversion")
+    a.obs["graph_now.osat.thr_eff"][:] = 100
+    a.obs["graph_now.osat.thr_eff.observed"][:] = 1
+    a.obs["graph_now.fab.cap_eff"][:] = 10000
+    a.obs["graph_now.fab.cap_eff.observed"][:] = 1
+    a.obs["demand_forecast.qty"][0, 0] = 23
+    slots = list(map(tuple, a.config["layout"]["stock_slots"]))
+    for node in matching:
+        row = slots.index((node, demand_pair[1]))
+        a.obs["stock.qty"][row] = 4
+    for node in a.config["layout"]["fabs"]:
+        profile = a.config["static"]["instance"]["nodes"][node].get("fab", {})
+        if profile.get("product"):
+            pair = node, a.config["static"]["commodities"]["id"].index(profile["product"])
+            if pair in slots:
+                a.obs["stock.qty"][slots.index(pair)] = 10000
+    state = a.state.StateBuilder(a.config).build(a.obs, a.network)
+    planner = a.needs.NeedPlanner(a.config, production_horizon=1, safety_stock=False)
+    needs = planner.plan(state, a.obs, a.network)
+    osat_needs = [need for need in needs if need.reason == "production" and need.destination_node in matching]
+    assert sum(need.quantity for need in osat_needs) <= max(0, 23 - 4 * len(matching))
+    fab_nodes = set(a.config["layout"]["fabs"])
+    assert not any(need.reason == "production" and need.destination_node in fab_nodes for need in needs)
+
+
+def test_unknown_stock_does_not_create_a_zero_based_replenishment(api):
+    a = empty(api())
+    pair = tuple(a.config["layout"]["demands"][0])
+    stock_row = list(map(tuple, a.config["layout"]["stock_slots"])).index(pair)
+    a.obs["stock.qty.observed"][stock_row] = 0
+    a.obs["demand_forecast.qty"][0, 0] = 10
+    builder = a.state.StateBuilder(a.config)
+    planner = a.needs.NeedPlanner(a.config, safety_stock=False)
+    assert not any(
+        (need.destination_node, need.commodity_id) == pair
+        for need in planner.plan(builder.build(a.obs, a.network), a.obs, a.network)
+    )
+    assert f"stock:{pair}:unknown_coverage" in planner.last_issues
 
 
 def test_forecasts_stop_at_episode_horizon(api):
