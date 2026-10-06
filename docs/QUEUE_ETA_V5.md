@@ -14,11 +14,17 @@ Early Warnings, рішення чекати відкриття та диверс
 яка вже містить попередню роботу через merged PR #1 з analytics. Integration
 48acf87 і analytics 43d7cb6 входять у цю історію.
 
+Під час роботи з'явилася analytics 1bfb7ff з новим production NeedPlanner,
+pipeline metadata і retrospective backtest; її також злито в network-delivery.
+Нові optional remaining_edges/remaining_route_weeks заповнюються для proposed
+pipeline. Route weeks — номінальний залишок без черг, не прогнозований ETA.
+
 ## Реалізація
 
 Новий `delivery_eta.py` — адаптер мережі/доставки до існуючого
 `QueueForecaster.forecast(..., proposed_pipeline=...)`. Сам engine
-`queue_forecast.py`, state.py, needs.py і contracts.py не змінені.
+`queue_forecast.py`, state.py, needs.py і contracts.py у тасці ETA не
+перероблялися; їхні нові версії підтягнуто через окремий merge analytics.
 
 Для кандидата allocator спочатку визначає доступну кількість за поточними
 stock, entry capacity і fleet. Морський кандидат стає гіпотетичним PipelineLot
@@ -98,7 +104,8 @@ stock, full-quantity completion без подвійного batching, shared que
 сценаріїв окремо підтверджений фінальний allocator suite: 37 passed.
 Ruff check/format і git diff --check пройшли.
 
-Повні native епізоди 2026-10-06, entropy 12345, episode 0:
+Повні native епізоди ДО злиття analytics 1bfb7ff, 2026-10-06,
+entropy 12345, episode 0 (історичні дані для незмінних старих needs):
 
 | Мережа | Тижнів | Витрати V1, USD | Витрати з FIFO ETA, USD | Різниця | Max CPU кандидата | Clipped V1 / ETA |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -122,8 +129,38 @@ uv run sbf compare <frozen_FIFO_ETA> <frozen_V1> --task=full --entropy=12345 --e
 Далі повторити на validation root 67890; root 0/dev зберегти для рідкісного
 підтвердження. Не міняти needs/risk під час цього порівняння.
 
-Статична sbf check packed FIFO-кандидата пройшла: 14 файлів, дозволені imports.
+Статична sbf check packed FIFO-кандидата після merge analytics пройшла:
+15 файлів, дозволені imports.
 Ізольований check і sbf compare на Windows зупиняються до scoring через fcntl.
 Загальний pytest з трьома workers і --maxfail=3: 40 passed, 3 skipped, 6 failed;
 5 failures — той самий fcntl, ще 1 — Unix chmod 0600 у тесті Codabench на Windows.
 Benchmark/runner і його platform tests у цій тасці не змінювалися.
+
+## Фінальний стан після merge analytics 1bfb7ff
+
+Регресія спільних модулів повторена: **156 passed, 3 skipped**.
+Однакові нові needs використані і в baseline V1, і в candidate FIFO ETA;
+зміна виробничих потреб не змішується з ефектом увімкнення прогнозу черг.
+Повні native епізоди, той самий entropy 12345/episode 0:
+
+| Мережа | Витрати V1, USD | Витрати з FIFO ETA, USD | Різниця | Max CPU кандидата | Clipped V1 / ETA |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Tiny | 2,888,291,263.98 | 2,735,281,615.63 | -5.298% | 0.078125 с | 1 / 0 |
+| Small | 5,265,081,815,919.36 | 5,232,605,468,633.12 | -0.617% | 0.140625 с | 0 / 2 |
+| Full | 15,334,467,096,343.70 | 15,328,037,896,111.97 | -0.042% | 0.218750 с | 11 / 11 |
+
+Морських призначень з прогнозом: 34 / 108 / 86. Поточні frozen files, hashes
+і reports: outputs/10_network_allocation/2026-10-06_queue_eta_analytics_{tiny,small,full}.
+Усі попередні обмеження щодо одного сценарію, RSS і server CPU збережені.
+
+Залишкові clip-події досліджено окремо, без передачі прихованих marks агенту.
+Інформація graph_now.u — instantaneous capacity на t-1, а simulator dispatch
+читає week-average marks.u. На Small/week 4 slots 76/78 і Full/week 67 slots
+70/71/72/73/96/97 requested не перевищує видиму instantaneous capacity, але
+executed точно дорівнює меншій фізичній week-average capacity. Отже observed=1
+не гарантує незмінність ресурсу протягом тижня. Причина решти п'яти Full clips
+на week 95 окремо не встановлена; вони збережені в report.
+
+Наступний окремий етап V5 має перевірити використання оголошених початків/кінців
+обмежень для відповідних дат проходження маршруту. Шумний Early Warning
+або невидима майбутня подія не можуть стати відомим week-average значенням.

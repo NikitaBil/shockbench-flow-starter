@@ -27,7 +27,10 @@ result = allocator.allocate(state, needs, observation, network)
 `available_stock[(node, commodity)] -> Quantity`, `quantity`, `due_week`,
 `priority`, `shortage_cost_per_unit_usd`. Індекси — з config. Вихід —
 погоджений `AllocationResult`; додаткові поля/види ресурсів не вводяться.
-Контракт `contracts.py` збігається з integration на 48acf87.
+На момент аудиту контракт `contracts.py` збігався з integration на 48acf87.
+Пізніше підтягнуто командну analytics 1bfb7ff: вона додала optional
+remaining_edges/remaining_route_weeks до PipelineLot. AllocationResult
+і його види ресурсів збережені; це не самостійна зміна контракту allocator.
 
 Метод не змінює state, needs чи observation. Результати повторних викликів
 не ділять масив flows. Модулі стану/потреб і frozen baseline не змінюються.

@@ -49,6 +49,8 @@ class CandidateETA:
             Quantity(quantity, "estimated"),
             self.state.week + self.forecast_network.edge_transit_weeks[route.edge_id],
             route.destination_node,
+            remaining_edges=route.edges[1:],
+            remaining_route_weeks=sum(self.network.edge_transit_weeks[edge] for edge in route.edges[1:]),
         )
 
     def evaluate(self, option, quantity):
