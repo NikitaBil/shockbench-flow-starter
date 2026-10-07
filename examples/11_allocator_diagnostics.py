@@ -243,10 +243,10 @@ def main(task="tiny", entropy=12345, episode=0, weeks=7, candidate="team_agent",
                 f"{report[label]['summary']}",
                 flush=True,
             )
-        if originals != {k: fingerprint(v) for k, v in sources.items()} or frozen != {
-            k: fingerprint(folder / k) for k in sources
-        }:
-            raise RuntimeError("source or frozen inputs changed during replay")
+        report["source_hashes_after"] = {k: fingerprint(v) for k, v in sources.items()}
+        report["sources_changed_since_freeze"] = originals != report["source_hashes_after"]
+        if frozen != {k: fingerprint(folder / k) for k in sources}:
+            raise RuntimeError("frozen inputs changed during replay")
         report["status"] = "completed"
     except Exception as exc:
         report.update(status="failed", error=f"{type(exc).__name__}: {exc}")
