@@ -32,10 +32,20 @@ class Agent:
         queue_eta = PARAMS.get("queue_eta_enabled", False)
         if not isinstance(queue_eta, bool):
             raise ValueError("queue_eta_enabled must be a boolean")
+        queue_forecast = PARAMS.get("queue_forecast_enabled", False)
+        if not isinstance(queue_forecast, bool):
+            raise ValueError("queue_forecast_enabled must be a boolean")
         self.pipeline = (
             pipeline
             if pipeline is not None
-            else build_pipeline(config, self.network, enabled=enabled, queue_eta_enabled=queue_eta)
+            else build_pipeline(
+                config,
+                self.network,
+                enabled=enabled,
+                queue_eta_enabled=queue_eta,
+                queue_forecast_enabled=queue_forecast,
+                planner_options=PARAMS.get("planner_options"),
+            )
         )
         self.last_allocation = None
         self.cap = np.array(

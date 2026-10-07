@@ -70,6 +70,7 @@ class NeedPlanner:
         safety_buffer_policy: SafetyBufferPolicy | None = None,
         production_enabled=True,
         shortage_cost_model=False,
+        fuel_replenishment_enabled=True,
     ):
         if not isinstance(production_horizon, int) or isinstance(production_horizon, bool) or production_horizon < 1:
             raise ValueError("production_horizon must be a positive integer")
@@ -82,6 +83,9 @@ class NeedPlanner:
         if not isinstance(shortage_cost_model, bool):
             raise ValueError("shortage_cost_model must be a boolean")
         self.shortage_cost_model = bool(shortage_cost_model)
+        if not isinstance(fuel_replenishment_enabled, bool):
+            raise ValueError("fuel_replenishment_enabled must be a boolean")
+        self.fuel_replenishment_enabled = fuel_replenishment_enabled
         static = config["static"]
         self.commodities = {name: i for i, name in enumerate(static["commodities"]["id"])}
         self.nodes = {name: i for i, name in enumerate(static["nodes"]["id"])}
@@ -501,6 +505,126 @@ class NeedPlanner:
                     )
         return requirements
 
+    def _fuel_replenishment(self, state, needs, network, issues):
+        """Project net grid fuel requests onto import-capable feeder inventory.
+
+        Inventory position offsets order volume, not deadline coverage. Cargo
+        with unknown ETA stays uncertain; only the allocator can dispatch stock.
+        Alternative feeders share the demand instead of each requesting it all.
+        """
+        grids = set(self.config["layout"]["grids"])
+        fuel_names = {name for node in grids for name in self.profiles[node]["grid"]["shares"]}
+        fuel_ids = {self.commodities[name] for name in fuel_names if name in self.commodities}
+        positions = {}
+        feeders = {}
+        for need in needs:
+            if need.destination_node not in grids or need.commodity_id not in fuel_ids:
+                continue
+            key = need.destination_node, need.commodity_id
+            if key in feeders:
+                continue
+            choices = {}
+            for slot in network.slots_to.get(key, ()):
+                route = network.routes[slot]
+                pair = route.source_node, need.commodity_id
+                # External supply nodes require no predecessor action. Only
+                # stock nodes with an actual incoming slot need replenishment.
+                imports = network.slots_to.get(pair, ())
+                if not any(network.routes[s].source_node != need.destination_node for s in imports):
+                    continue
+                stock = state.available_stock.get(pair)
+                if stock is None or stock.value is None:
+                    issues.append(f"fuel_replenishment:{pair}:unknown_inventory")
+                    continue
+                rank = route.nominal_transit_weeks, route.nominal_freight_per_unit, route.slot_id
+                if pair not in choices or rank < choices[pair][0]:
+                    choices[pair] = rank, route
+                positions.setdefault(pair, float(stock.value))
+            feeders[key] = sorted(choices.items(), key=lambda item: item[1][0])
+
+        # Reserve observed physical cargo first, even when the queue forecast
+        # reports estimated arrival pieces. Do not also count its calendar rows.
+        reserved_sources = set()
+
+        def reserve(source_id, pair, qty):
+            if pair not in positions or qty.value is None:
+                return
+            if qty.source != "observed" and not self.include_estimated_arrivals:
+                return
+            if source_id in reserved_sources:
+                raise ValueError("duplicate cargo ID would double count import inventory")
+            positions[pair] += qty.value
+            reserved_sources.add(source_id)
+
+        for cargo in state.pipeline:
+            if cargo.edge_arrival_week is not None and cargo.edge_arrival_week > state.horizon:
+                continue
+            reserve(cargo.lot_id, (cargo.destination_node, cargo.commodity_id), cargo.quantity)
+        for cargo in state.queues:
+            if cargo.next_edge_id is None or cargo.lane_status != "known" or cargo.lane_id is None:
+                continue
+            destination = network.transit_progress(cargo.next_edge_id, cargo.lane_id).destination_node
+            reserve(cargo.lot_id, (destination, cargo.commodity_id), cargo.quantity)
+
+        # Calendar-only imports can also be represented by the state contract.
+        # Count each split piece once, but not WIP or future source supply.
+        for arrival in state.arrivals:
+            pair = arrival.destination_node, arrival.commodity_id
+            if pair not in positions or arrival.source_kind not in ("pipeline", "queue"):
+                continue
+            if arrival.source_id in reserved_sources:
+                continue
+            qty = arrival.quantity
+            if qty.value is None or (qty.source != "observed" and not self.include_estimated_arrivals):
+                continue
+            if arrival.arrival_week is not None and not state.week <= arrival.arrival_week <= state.horizon:
+                continue
+            positions[pair] += qty.value
+
+        requests = {}
+        for need in sorted(needs, key=lambda item: (item.due_week, -item.priority, item.need_id)):
+            choices = feeders.get((need.destination_node, need.commodity_id), ())
+            if not choices:
+                continue
+            remaining = need.quantity
+            # Spend each feeder's stock/inbound position once across all grids.
+            for pair, _choice in choices:
+                covered = min(remaining, positions[pair])
+                positions[pair] -= covered
+                remaining -= covered
+            if remaining <= 0:
+                continue
+            pair, (_rank, route) = choices[0]
+            # Ordinary terminal arrivals cannot be dispatched again that week.
+            due = max(state.week, need.due_week - route.nominal_transit_weeks - 1)
+            key = pair, due, need.priority
+            if key not in requests:
+                requests[key] = [0.0, [], []]
+            requests[key][0] += remaining
+            requests[key][1].append(need.need_id)
+            if need.shortage_cost_per_unit_usd is not None:
+                requests[key][2].append(need.shortage_cost_per_unit_usd)
+        return tuple(
+            DeliveryNeed(
+                f"fuel_replenishment:{pair[0]}:{pair[1]}:{due}:{priority:g}",
+                *pair,
+                quantity,
+                due,
+                priority,
+                "fuel_replenishment",
+                max(costs) if costs else None,
+                assumptions=(
+                    "net grid fuel demand propagated through existing action slots",
+                    "feeder stock and inbound import quantities shared once across consumer requests",
+                    "inbound with unknown ETA offsets new order volume, not timely coverage or dispatchable stock",
+                    "deadline uses nominal downstream transit plus one pre-dispatch-stock week; not guaranteed ETA",
+                    "deterministic feeder choice; current feasibility and shared capacities belong to allocator",
+                    "parents: " + ",".join(parents),
+                ),
+            )
+            for (pair, due, priority), (quantity, parents, costs) in sorted(requests.items())
+        )
+
     def plan(self, state, observation, network):
         reader = ObservationReader(observation)
         issues = []
@@ -598,7 +722,9 @@ class NeedPlanner:
                             assumptions=assumptions + ("static grid ibar reserve target",),
                         )
                     )
-        self.last_issues = tuple(issues)
+        if self.fuel_replenishment_enabled:
+            result.extend(self._fuel_replenishment(state, result, network, issues))
+        self.last_issues = tuple(dict.fromkeys(issues))
         return tuple(sorted(result, key=need_order_key))
 
     @staticmethod

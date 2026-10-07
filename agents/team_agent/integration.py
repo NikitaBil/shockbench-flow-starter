@@ -196,14 +196,52 @@ class DecisionPipeline:
         return result
 
 
-def build_pipeline(config, network, *, enabled=False, queue_eta_enabled=False):
+def validate_planner_options(options):
+    if options is None:
+        return {}
+    if not isinstance(options, dict):
+        raise ValueError("planner_options must be an object")
+    boolean_fields = {
+        "include_estimated_arrivals", "safety_stock", "production_enabled",
+        "shortage_cost_model", "fuel_replenishment_enabled",
+    }
+    if options.keys() - (boolean_fields | {"production_horizon"}):
+        raise ValueError("planner_options contains unsupported fields")
+    for name in boolean_fields & options.keys():
+        if not isinstance(options[name], bool):
+            raise ValueError(f"planner_options.{name} must be a boolean")
+    if "production_horizon" in options:
+        value = options["production_horizon"]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError("planner_options.production_horizon must be a positive integer")
+    return dict(options)
+
+
+def build_pipeline(
+    config, network, *, enabled=False, queue_eta_enabled=False,
+    queue_forecast_enabled=False, planner_options=None,
+):
     """V4 is explicit opt-in until paired evaluation supports promotion."""
+    for name, value in (
+        ("enabled", enabled), ("queue_eta_enabled", queue_eta_enabled),
+        ("queue_forecast_enabled", queue_forecast_enabled),
+    ):
+        if not isinstance(value, bool):
+            raise ValueError(f"{name} must be a boolean")
+    options = validate_planner_options(planner_options)
     if not enabled:
         return None
     from allocation import Allocator
     from needs import NeedPlanner
     from state import StateBuilder
 
+    forecaster = None
+    if queue_forecast_enabled:
+        from queue_forecast import QueueForecaster
+
+        forecaster = QueueForecaster(config)
     return DecisionPipeline(
-        StateBuilder(config), NeedPlanner(config), Allocator(config, network, queue_eta_enabled=queue_eta_enabled)
+        StateBuilder(config, queue_forecaster=forecaster),
+        NeedPlanner(config, **options),
+        Allocator(config, network, queue_eta_enabled=queue_eta_enabled),
     )
