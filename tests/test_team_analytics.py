@@ -1,6 +1,8 @@
 """Real state/needs modules and conditional queue forecasts on all wire layouts."""
 
+import copy
 import importlib
+import json
 import sys
 from collections import defaultdict
 from dataclasses import replace
@@ -284,11 +286,63 @@ def test_production_indirect_cost_requires_matching_bom_units(api):
     fab_node = a.config["layout"]["fabs"][0]
     fab = planner.profiles[fab_node]["fab"]
     input_id = planner.commodities[fab["input"]]
-    value = planner._shortage_cost((fab_node, input_id), "production")
     if a.config["static"]["units"][fab["input"]] != a.config["static"]["units"][fab["product"]]:
-        assert value is None
+        with pytest.raises(ValueError, match="VOLL unit mismatch in Fab BOM"):
+            planner._shortage_cost((fab_node, input_id), "production")
     else:
+        value = planner._shortage_cost((fab_node, input_id), "production")
         assert value == planner._downstream_penalty(fab["product"])
+
+
+def test_voll_rejects_mismatched_fuel_and_osat_bom_units(api):
+    a = api("tiny")
+    a.config = copy.deepcopy(a.config)
+    planner = a.needs.NeedPlanner(a.config, shortage_cost_model=True)
+    reader = a.needs.ObservationReader(a.obs)
+
+    grid = a.config["layout"]["grids"][0]
+    grid_profile = planner.profiles[grid]["grid"]
+    fuel_name = next(name for name in grid_profile["shares"] if name in planner.commodities)
+    a.config["static"]["units"][fuel_name] = "MWh"
+    with pytest.raises(ValueError, match="VOLL unit mismatch for grid fuel"):
+        planner._shortage_cost((grid, planner.commodities[fuel_name]), "grid_fuel", reader)
+
+    osat = a.config["layout"]["osats"][0]
+    raw, package = next(iter(planner.profiles[osat]["osat"]["packages"].items()))
+    a.config["static"]["units"][raw] = "case"
+    a.config["static"]["units"][package] = "each"
+    with pytest.raises(ValueError, match="VOLL unit mismatch in OSAT BOM"):
+        planner._shortage_cost((osat, planner.commodities[raw]), "production")
+
+
+def test_voll_feature_flag_is_boolean_and_presets_are_isolated(api):
+    a = api("tiny")
+    with pytest.raises(ValueError, match="shortage_cost_model must be a boolean"):
+        a.needs.NeedPlanner(a.config, shortage_cost_model="false")
+
+    presets_path = ROOT / "agents" / "team_agent" / "experiments" / "presets.json"
+    presets = json.loads(presets_path.read_text(encoding="utf-8"))
+    disabled = presets["voll_comparison_disabled"]
+    enabled = presets["voll_comparison_enabled"]
+    assert disabled["shortage_cost_model"] is False
+    assert enabled["shortage_cost_model"] is True
+    assert {key: value for key, value in disabled.items() if key != "shortage_cost_model"} == {
+        key: value for key, value in enabled.items() if key != "shortage_cost_model"
+    }
+    assert a.needs.NeedPlanner(a.config, **disabled).shortage_cost_model is False
+    assert a.needs.NeedPlanner(a.config, **enabled).shortage_cost_model is True
+
+
+@pytest.mark.parametrize("task", ["tiny", "small", "full"])
+def test_voll_enabled_planner_validates_real_benchmark_units(api, task):
+    a = api(task)
+    state = a.state.StateBuilder(a.config).build(a.obs, a.network)
+    needs = a.needs.NeedPlanner(a.config, shortage_cost_model=True).plan(state, a.obs, a.network)
+    assert needs
+    assert all(
+        need.shortage_cost_per_unit_usd is None or need.shortage_cost_per_unit_usd >= 0
+        for need in needs
+    )
 
 
 @pytest.mark.parametrize("first_demand", [0.0, 10.0])

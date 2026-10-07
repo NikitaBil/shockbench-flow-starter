@@ -19,5 +19,19 @@
     "include_estimated_arrivals": true,
     "production_enabled": true,
     "shortage_cost_model": false
+  },
+  "voll_comparison_disabled": {
+    "production_horizon": 4,
+    "safety_stock": true,
+    "include_estimated_arrivals": false,
+    "production_enabled": true,
+    "shortage_cost_model": false
+  },
+  "voll_comparison_enabled": {
+    "production_horizon": 4,
+    "safety_stock": true,
+    "include_estimated_arrivals": false,
+    "production_enabled": true,
+    "shortage_cost_model": true
   }
 }

@@ -79,6 +79,8 @@ class NeedPlanner:
         self.safety_stock = safety_stock
         self.safety_buffer_policy = safety_buffer_policy or SafetyBufferPolicy()
         self.production_enabled = bool(production_enabled)
+        if not isinstance(shortage_cost_model, bool):
+            raise ValueError("shortage_cost_model must be a boolean")
         self.shortage_cost_model = bool(shortage_cost_model)
         static = config["static"]
         self.commodities = {name: i for i, name in enumerate(static["commodities"]["id"])}
@@ -104,7 +106,10 @@ class NeedPlanner:
                 if raw != output_name:
                     continue
                 if units.get(raw) != units.get(package):
-                    continue
+                    raise ValueError(
+                        f"VOLL unit mismatch in OSAT BOM {raw}->{package}: "
+                        f"{units.get(raw)!r} != {units.get(package)!r}"
+                    )
                 product = self.commodities[package]
                 candidates.extend(
                     pi for (sink, commodity), pi in self.penalties.items() if commodity == product
@@ -121,7 +126,9 @@ class NeedPlanner:
         value [USD/output/week] times ``R/e`` [output/GWh]. Fuel shares set the
         segment's generation cap and are not a fuel conversion factor. The
         Fab term is a conservative max across Fabs connected to this grid.
-        Unknown/mismatched units or energy observations disable the estimate.
+        Missing energy observations disable the estimate. A unit mismatch is
+        a configuration error and raises ValueError so an enabled VOLL model
+        cannot silently return a dimensionally invalid cost.
         """
         if not self.shortage_cost_model:
             return None
@@ -133,8 +140,9 @@ class NeedPlanner:
         if reason == "grid_fuel" and "grid" in profile:
             grid = profile["grid"]
             name = self.config["static"]["commodities"]["id"][commodity]
-            if self.config["static"].get("units", {}).get(name) not in {"GWh", "GWh fuel"}:
-                return None
+            unit = self.config["static"].get("units", {}).get(name)
+            if unit not in {"GWh", "GWh fuel"}:
+                raise ValueError(f"VOLL unit mismatch for grid fuel {name}: expected GWh, got {unit!r}")
             if float(grid.get("shares", {}).get(name, 0.0)) <= 0.0:
                 return None
             voll = float(grid.get("voll", 0.0))
@@ -157,8 +165,13 @@ class NeedPlanner:
             if "osat" in profile:
                 package = profile["osat"].get("packages", {}).get(input_name)
                 units = self.config["static"].get("units", {})
-                if package is None or units.get(input_name) != units.get(package):
+                if package is None:
                     return None
+                if units.get(input_name) != units.get(package):
+                    raise ValueError(
+                        f"VOLL unit mismatch in OSAT BOM {input_name}->{package}: "
+                        f"{units.get(input_name)!r} != {units.get(package)!r}"
+                    )
                 package_id = self.commodities[package]
                 return max(
                     (pi for (sink, item), pi in self.penalties.items() if item == package_id),
@@ -171,7 +184,10 @@ class NeedPlanner:
                 input_unit = self.config["static"].get("units", {}).get(input_name)
                 output_unit = self.config["static"].get("units", {}).get(fab.get("product"))
                 if input_unit != output_unit:
-                    return None
+                    raise ValueError(
+                        f"VOLL unit mismatch in Fab BOM {input_name}->{fab.get('product')}: "
+                        f"{input_unit!r} != {output_unit!r}"
+                    )
                 return self._downstream_penalty(fab.get("product"))
         return None
 

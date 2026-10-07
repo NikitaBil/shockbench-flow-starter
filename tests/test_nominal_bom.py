@@ -153,5 +153,16 @@ def test_fab_schedule_backs_out_live_route_eta(needs_module):
         state, needs_module.ObservationReader(observation), [], network
     )
 
-    assert requirements[(0, 0)][0][0] == 8  # OSAT input must arrive before OSAT starts.
-    assert requirements[(1, 4)][0][0] == 3  # 9 - 1 OSAT - 3 transit - 2 Fab.
+    demand_week = 9
+    osat_lead_weeks = 1
+    fab_to_osat_transit_weeks = 3
+    fab_lead_weeks = 2
+    osat_input_receipt_week = demand_week - osat_lead_weeks
+    fab_output_receipt_week = osat_input_receipt_week - fab_to_osat_transit_weeks
+    fab_input_order_week = fab_output_receipt_week - fab_lead_weeks
+
+    assert requirements[(0, 0)][0][0] == osat_input_receipt_week == 8
+    assert requirements[(1, 4)][0][0] == fab_input_order_week == 3
+    # A Fab input need is due by production start; production plus outbound
+    # transit must meet the downstream OSAT input receipt SLA.
+    assert fab_input_order_week + fab_lead_weeks + fab_to_osat_transit_weeks <= osat_input_receipt_week
