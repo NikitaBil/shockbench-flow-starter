@@ -517,6 +517,32 @@ def test_impossible_candidates_do_not_consume_forecast_budget(api, blocked):
     assert any("Ran 0/16" in r.message for r in result.reasons if r.code == "queue_eta_forecast_usage")
 
 
+def test_observed_transit_beyond_episode_is_pruned_before_forecast(api):
+    obs = queue_observation(api)
+    obs["week"][0] = 12
+    obs["graph_now.u"][6] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+
+    def unexpected_forecast(*args, **kwargs):
+        pytest.fail("a forecast cannot rescue a route whose observed transit already exceeds T")
+
+    obj.queue_forecaster.forecast = unexpected_forecast
+    result = obj.allocate(state(api, week=12), [need(due=12)], obs)
+    assert not np.any(result.flows)
+    assert "estimated_arrival_beyond_horizon" in result.unmet_needs[0].reason
+    assert any("Ran 0/16" in r.message for r in result.reasons if r.code == "queue_eta_forecast_usage")
+
+
+def test_hidden_transit_beyond_episode_remains_unknown(api):
+    obs = queue_observation(api)
+    obs["week"][0] = 12
+    obs["graph_now.tau.observed"][1] = 0
+    obs["graph_now.u"][6] = 0
+    result = api.Allocator(api.cfg, queue_eta_enabled=True).allocate(state(api, week=12), [need(due=12)], obs)
+    assert "queue_eta_transit_unknown" in result.unmet_needs[0].reason
+    assert not any(r.code == "eta_on_time_estimate" for r in result.reasons)
+
+
 @pytest.mark.parametrize("task", ["tiny", "small", "full"])
 def test_queue_eta_real_nominal_sea_dispatch_is_valid_and_unclipped(api, task):
     import gymnasium as gym

@@ -257,6 +257,23 @@ class Allocator:
                         )
                         continue
                     if predictor is not None:
+                        # Even an empty FIFO queue cannot beat observed transit
+                        # under the same persistence assumptions as the forecast.
+                        # Hidden transit is not a known lower bound.
+                        if option.no_wait_arrival_week > state.horizon and np.all(
+                            snapshot.fields["graph_now.tau"].observed[list(route.edges)]
+                        ):
+                            blocked.add("estimated_arrival_beyond_horizon")
+                            self._trace(
+                                need,
+                                need_rank,
+                                state.week,
+                                route.slot_id,
+                                "prefilter",
+                                "estimated_arrival_beyond_horizon",
+                                no_wait_arrival=option.no_wait_arrival_week,
+                            )
+                            continue
                         calls_before = predictor.calls
                         cached_before = (option.slot_id, quantity) in predictor.cache
                         option = predictor.evaluate(option, quantity)
