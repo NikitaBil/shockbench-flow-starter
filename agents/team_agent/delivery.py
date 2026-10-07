@@ -37,6 +37,7 @@ class DeliveryOption:
     beyond_horizon: bool
     delay_flags: tuple[str, ...]
     uncertain_fields: tuple[str, ...]
+    queue_holding_cost_per_unit: float = 0.0
 
 
 class DeliveryEvaluator:

@@ -22,7 +22,9 @@ class CandidateETA:
     MAX_FORECASTS = 16
     MAX_WEEKS = 24
 
-    def __init__(self, forecaster, state, observation, network, snapshot, *, announced_guard=False):
+    def __init__(
+        self, forecaster, state, observation, network, snapshot, *, announced_guard=False, closure_schedule=None
+    ):
         self.forecaster = forecaster
         self.state, self.observation = state, observation
         self.network, self.snapshot = network, snapshot
@@ -31,6 +33,7 @@ class CandidateETA:
         self.calls = 0
         self.rejections = set()
         self.pending = self._pending() if announced_guard else {}
+        self.closure_schedule = closure_schedule
         # Topology is static; future transit persists at observed current tau.
         self.forecast_network = SimpleNamespace(
             edge_transit_weeks=tuple(int(tau) for tau in snapshot.fields["graph_now.tau"].values),
@@ -119,7 +122,7 @@ class CandidateETA:
         key = option.slot_id, quantity
         if key in self.cache:
             return self.cache[key]
-        reason, eta = None, None
+        reason, eta, holding = None, None, 0.0
         if self.pending and self._earliest_conflict(route):
             reason = "queue_eta_announced_prohibition_conflict"
         elif self.calls >= self.MAX_FORECASTS:
@@ -134,11 +137,13 @@ class CandidateETA:
             else:
                 proposal = self._proposal(option.slot_id, quantity)
                 self.calls += 1
+                schedule = {"throughput_schedule": self.closure_schedule} if self.closure_schedule is not None else {}
                 forecast = self.forecaster.forecast(
                     self.state,
                     self.observation,
                     self.forecast_network,
                     proposed_pipeline=(*self.proposals, proposal),
+                    **schedule,
                 )
                 eta = forecast.completion_weeks.get(proposal.lot_id)
                 if forecast.issues:
@@ -157,10 +162,29 @@ class CandidateETA:
                     # an earlier selected shipment's reported completion.
                     reason = "queue_eta_delays_selected_shipment"
                     eta = None
+                if eta is not None and self.closure_schedule is not None and self.closure_schedule.affected(route):
+                    # Upper bound: the whole proposed quantity pays until each
+                    # cohort's last release. Partial releases actually pay less.
+                    for visit in forecast.visits:
+                        if visit.source_id == proposal.lot_id and visit.completion_release_week is not None:
+                            position = self.closure_schedule.positions[visit.chokepoint_node]
+                            risk = int(self.snapshot.fields["graph_now.war_risk"].values[position])
+                            attrs = self.forecaster.config["static"]["instance"]["nodes"][visit.chokepoint_node][
+                                "chokepoint"
+                            ]
+                            costs = attrs.get("queue_holding", {}).get(
+                                self.network.commodity_names[route.commodity_id], (0, 0, 0)
+                            )
+                            holding += float(costs[risk]) * max(0, visit.completion_release_week - visit.arrival_week)
         if reason:
             self.rejections.add(reason)
         flags = tuple(flag for flag in option.delay_flags if flag != "queue_work_unknown")
         delay = None if eta is None else max(0, eta - option.no_wait_arrival_week)
+        reopening = (
+            ("announced_reopening_forecast",)
+            if eta is not None and self.closure_schedule is not None and self.closure_schedule.ends
+            else ()
+        )
         result = replace(
             option,
             quantity=quantity,
@@ -168,7 +192,8 @@ class CandidateETA:
             estimated_completion_week=eta,
             queue_delay_weeks=delay,
             beyond_horizon=eta is not None and eta > self.state.horizon,
-            delay_flags=flags + ((reason,) if reason else ("conditional_fifo_forecast",)),
+            delay_flags=flags + ((reason,) if reason else ("conditional_fifo_forecast",)) + reopening,
+            queue_holding_cost_per_unit=holding,
         )
         self.cache[key] = result
         return result

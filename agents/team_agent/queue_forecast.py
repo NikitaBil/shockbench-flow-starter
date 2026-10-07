@@ -137,7 +137,11 @@ class QueueForecaster:
             throughput[node, pool] = 0.0 if opened == 0 else rate
         return capacities, throughput, banned
 
-    def forecast(self, state, observation, network, *, proposed_pipeline=()):
+    def forecast(self, state, observation, network, *, proposed_pipeline=(), throughput_schedule=None):
+        """Optional delivery-owned schedule changes pool rates, not edge/fleet caps.
+
+        The default StateBuilder forecast keeps its existing persistence model.
+        """
         reader = ObservationReader(observation)
         sources, events, book = {}, defaultdict(list), []
         incomplete = [issue for issue in state.issues if issue.startswith(("pipeline:", "queue:"))]
@@ -199,9 +203,7 @@ class QueueForecaster:
         for cargo in state.queues:
             if cargo.next_edge_id is not None and cargo.lane_id is not None:
                 active_edges.add(cargo.next_edge_id)
-                active_edges.update(
-                    network.transit_progress(cargo.next_edge_id, cargo.lane_id).remaining_edges
-                )
+                active_edges.update(network.transit_progress(cargo.next_edge_id, cargo.lane_id).remaining_edges)
         for edge in sorted(active_edges):
             weeks = reader.number("graph_now.tau", edge)
             if weeks is None or weeks != int(weeks):
@@ -267,7 +269,8 @@ class QueueForecaster:
                     )
                 visit = visits[key]
                 visit["entered"] = max(visit["entered"], qty + visit["released"])
-            remaining_edges, remaining_pools = dict(capacities), dict(throughput)
+            remaining_edges = dict(capacities)
+            remaining_pools = dict(throughput) if throughput_schedule is None else throughput_schedule(week, throughput)
             cohorts = defaultdict(list)
             for lot in book:
                 if lot.quantity > 0:
@@ -374,7 +377,15 @@ class QueueForecaster:
                     visit["last"] if complete else None,
                 )
             )
-        return QueueForecast(tuple(arrivals), tuple(records), MappingProxyType(completion))
+        assumptions = (
+            ASSUMPTIONS
+            if throughput_schedule is None
+            else (
+                "edge caps and prohibitions persist; pool throughput follows the supplied conditional schedule",
+                *ASSUMPTIONS[1:],
+            )
+        )
+        return QueueForecast(tuple(arrivals), tuple(records), MappingProxyType(completion), assumptions=assumptions)
 
 
 def retrospective_backtest(predictions, actual_snapshots):

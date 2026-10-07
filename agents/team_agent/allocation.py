@@ -13,19 +13,29 @@ import numpy as np
 if __package__:
     from .contracts import AllocationResult, DecisionReason, ResourceUsage, UnmetNeed, need_order_key
     from .delivery import DeliveryEvaluator
+    from .delivery_closure import ClosureSchedule
     from .delivery_eta import CandidateETA
     from .network import NetworkTracker, StaticNetwork
     from .queue_forecast import QueueForecaster
 else:
     from contracts import AllocationResult, DecisionReason, ResourceUsage, UnmetNeed, need_order_key
     from delivery import DeliveryEvaluator
+    from delivery_closure import ClosureSchedule
     from delivery_eta import CandidateETA
     from network import NetworkTracker, StaticNetwork
     from queue_forecast import QueueForecaster
 
 
 class Allocator:
-    def __init__(self, config, network=None, *, queue_eta_enabled=False, announced_eta_guard_enabled=False):
+    def __init__(
+        self,
+        config,
+        network=None,
+        *,
+        queue_eta_enabled=False,
+        announced_eta_guard_enabled=False,
+        closure_wait_enabled=False,
+    ):
         if not isinstance(queue_eta_enabled, bool):
             raise ValueError("queue_eta_enabled must be a boolean")
         if not isinstance(announced_eta_guard_enabled, bool):
@@ -33,6 +43,11 @@ class Allocator:
         if announced_eta_guard_enabled and not queue_eta_enabled:
             raise ValueError("announced_eta_guard_enabled requires queue_eta_enabled")
         self.announced_eta_guard_enabled = announced_eta_guard_enabled
+        if not isinstance(closure_wait_enabled, bool):
+            raise ValueError("closure_wait_enabled must be a boolean")
+        if closure_wait_enabled and not queue_eta_enabled:
+            raise ValueError("closure_wait_enabled requires queue_eta_enabled")
+        self.closure_wait_enabled = closure_wait_enabled
         self.config = config
         self.network = network if network is not None else StaticNetwork(config)
         self.tracker = NetworkTracker(config, self.network)
@@ -88,7 +103,7 @@ class Allocator:
         if eta is not None and option.quantity != quantity:
             eta += max(0, math.ceil(quantity / option.snapshot_throughput) - 1)
         late = None if eta is None else max(0, eta - need.due_week)
-        cost = option.transport_cost_per_unit
+        cost = option.transport_cost_per_unit + option.queue_holding_cost_per_unit
         penalty = need.shortage_cost_per_unit_usd
         economic = cost + (late * penalty if late is not None and penalty is not None else 0)
         return (
@@ -175,6 +190,7 @@ class Allocator:
             raise ValueError("state week/horizon does not match observation/config")
         snapshot = self._snapshot(observation)
         net = self.network
+        closure_schedule = ClosureSchedule(observation, net, snapshot) if self.closure_wait_enabled else None
         predictor = (
             CandidateETA(
                 self.queue_forecaster,
@@ -183,6 +199,7 @@ class Allocator:
                 net,
                 snapshot,
                 announced_guard=self.announced_eta_guard_enabled,
+                closure_schedule=closure_schedule,
             )
             if self.queue_forecaster is not None
             else None
@@ -259,7 +276,10 @@ class Allocator:
                     route = net.routes[option.slot_id]
                     origin = route.source_node, route.commodity_id
                     status = snapshot.routes[route.slot_id]
-                    if status.closed_chokepoints or status.zero_capacity_edges or status.snapshot_throughput <= 0:
+                    can_wait = closure_schedule is not None and closure_schedule.permits_wait(route, status)
+                    if (
+                        status.closed_chokepoints or status.zero_capacity_edges or status.snapshot_throughput <= 0
+                    ) and not can_wait:
                         blocked.add("currently_blocked_delivery_route")
                         self._trace(
                             need, need_rank, state.week, route.slot_id, "prefilter", "currently_blocked_delivery_route"
@@ -300,7 +320,12 @@ class Allocator:
                         # Even an empty FIFO queue cannot beat observed transit
                         # under the same persistence assumptions as the forecast.
                         # Hidden transit is not a known lower bound.
-                        if option.no_wait_arrival_week > state.horizon and np.all(
+                        lower_bound = option.no_wait_arrival_week
+                        if closure_schedule is not None and closure_schedule.affected(route):
+                            scheduled_bound = closure_schedule.earliest_arrival(route, net)
+                            if scheduled_bound is not None:
+                                lower_bound = max(lower_bound, scheduled_bound)
+                        if lower_bound > state.horizon and np.all(
                             snapshot.fields["graph_now.tau"].observed[list(route.edges)]
                         ):
                             blocked.add("estimated_arrival_beyond_horizon")
@@ -312,6 +337,7 @@ class Allocator:
                                 "prefilter",
                                 "estimated_arrival_beyond_horizon",
                                 no_wait_arrival=option.no_wait_arrival_week,
+                                conditional_arrival_lower_bound=lower_bound,
                             )
                             continue
                         calls_before = predictor.calls
@@ -349,6 +375,28 @@ class Allocator:
                     break
                 _rank, option, qty, eta = min(candidates, key=lambda candidate: candidate[0])
                 route = net.routes[option.slot_id]
+                if closure_schedule is not None and any(
+                    closure_schedule.affected(net.routes[item[1].slot_id]) for item in candidates
+                ):
+                    compared = [
+                        (
+                            item[1].slot_id,
+                            item[3],
+                            item[1].transport_cost_per_unit + item[1].queue_holding_cost_per_unit,
+                        )
+                        for item in sorted(candidates, key=lambda candidate: candidate[0])[:8]
+                    ]
+                    reasons.append(
+                        DecisionReason(
+                            "closure_route_comparison",
+                            f"Chose slot {route.slot_id}, due {need.due_week}; alternatives "
+                            f"(slot, conditional ETA, transport + queue bound USD/unit): {compared}. "
+                            "Timely first, then transport + queue bound + supplied per-week shortage penalty; "
+                            "stable slot tie-break; no future reservations.",
+                            need.need_id,
+                            route.slot_id,
+                        )
+                    )
                 origin = route.source_node, route.commodity_id
                 weight = self._weight(route.edge_id, route.lane_id)
                 flows[route.slot_id] += qty
@@ -408,8 +456,26 @@ class Allocator:
                         DecisionReason(
                             "queue_eta_estimate",
                             f"Joint FIFO estimate for {qty:g} {route.unit}: completion week {eta}; "
-                            "current rates/transit persist, selected cargo is included; "
-                            "future dispatches/disruptions are unknown; no future resources reserved.",
+                            + (
+                                "pool rates resume nominally after observed closure ends; other rates/transit persist; "
+                                if "announced_reopening_forecast" in option.delay_flags
+                                else "current rates/transit persist, selected cargo is included; "
+                            )
+                            + "future dispatches/disruptions are unknown; no future resources reserved.",
+                            need.need_id,
+                            route.slot_id,
+                        )
+                    )
+                if "announced_reopening_forecast" in option.delay_flags and closure_schedule.affected(route):
+                    ends = {
+                        node: closure_schedule.ends[node] for node in route.chokepoints if node in closure_schedule.ends
+                    }
+                    reasons.append(
+                        DecisionReason(
+                            "wait_for_announced_reopening",
+                            f"Dispatched now; active closure end weeks {ends}; conditional completion {eta}; "
+                            f"queue holding upper bound {option.queue_holding_cost_per_unit:g} USD/unit; "
+                            "replanned next week; no future resources reserved.",
                             need.need_id,
                             route.slot_id,
                         )
