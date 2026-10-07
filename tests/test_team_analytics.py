@@ -205,7 +205,37 @@ def test_wip_gross_observed_output_estimated(api):
     state = a.state.StateBuilder(a.config).build(a.obs, a.network)
     assert state.wip
     assert all(item.gross_quantity.source == "observed" for item in state.wip)
-    assert all(item.quantity.source == "estimated" for item in state.arrivals if item.source_kind == "wip")
+    for arrival in (item for item in state.arrivals if item.source_kind == "wip"):
+        if arrival.destination_node in a.config["layout"]["osats"]:
+            assert arrival.quantity.source == arrival.source == "observed"
+        else:
+            assert arrival.quantity.source == "estimated"
+
+
+def test_confirmed_osat_wip_reduces_need_without_counting_fab_scrap_exposed_wip(api):
+    a = empty(api())
+    row = 0
+    osat = a.config["layout"]["osats"][0]
+    package = next(iter(a.needs.NeedPlanner(a.config).profiles[osat]["osat"]["packages"].values()))
+    package_id = a.needs.NeedPlanner(a.config).commodities[package]
+    a.obs["wip.node"][row] = osat
+    a.obs["wip.k"][row] = package_id
+    a.obs["wip.out_week"][row] = 1
+    a.obs["wip.qty"][row] = 10
+    a.obs["wip.qty.observed"][row] = 1
+    fab = a.config["layout"]["fabs"][0]
+    fab_profile = a.needs.NeedPlanner(a.config).profiles[fab]["fab"]
+    a.obs["wip.node"][1] = fab
+    a.obs["wip.k"][1] = a.needs.NeedPlanner(a.config).commodities[fab_profile["product"]]
+    a.obs["wip.out_week"][1] = 1
+    a.obs["wip.qty"][1] = 20
+    a.obs["wip.qty.observed"][1] = 1
+    state = a.state.StateBuilder(a.config).build(a.obs, a.network)
+    planner = a.needs.NeedPlanner(a.config, safety_stock=False)
+    assert planner._coverage(state, (osat, package_id), 1) == 10
+    assert planner._coverage(
+        state, (fab, a.needs.NeedPlanner(a.config).commodities[fab_profile["product"]]), 1
+    ) == 0
 
 
 def test_indirect_shortage_cost_is_disabled_by_default(api):

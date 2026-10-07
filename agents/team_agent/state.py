@@ -196,7 +196,14 @@ class StateBuilder:
             lot_id = f"wip:{node}:{commodity}:{due}:{row}"
             qty = reader.quantity("wip.qty", row)
             wip.append(WorkInProgress(lot_id, node, commodity, qty, due))
-            # Gross WIP can still suffer future scrap: its future amount is not confirmed stock.
+            # OSAT package WIP has a known completion week and is not subject
+            # to the Fab scrap process, so observed lots are confirmed dated
+            # supply. Fab WIP remains estimated because future scrap can
+            # reduce its gross amount before it matures.
+            confirmed_osat_output = (
+                node in self.layout["osats"] and due is not None and qty.source == "observed"
+            )
+            arrival_qty = qty if confirmed_osat_output else Quantity(qty.value, "estimated")
             arrivals.append(
                 ExpectedArrival(
                     f"arrival:{lot_id}",
@@ -204,9 +211,9 @@ class StateBuilder:
                     "wip",
                     node,
                     commodity,
-                    Quantity(qty.value, "estimated"),
+                    arrival_qty,
                     due,
-                    "observed" if due is not None else "unknown",
+                    "observed" if confirmed_osat_output else "estimated" if due is not None else "unknown",
                 )
             )
         state = StateSnapshot(
