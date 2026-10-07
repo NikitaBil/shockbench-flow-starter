@@ -90,23 +90,45 @@ Dataclass у `needs.py`: `need_id`, `destination_node`, `commodity_id`,
   береться з `static.sinks.pi`.
 - Fab/OSAT inputs — лише від published downstream package forecast, обмежені
   observed `cap_eff`/`thr_eff`; без forecast capacity не створює потребу.
-  OSAT не ділить throughput порівну. Fab BOM враховує `w_scr/tau`; `e` та
-  публічна fuel share задають пов'язану потребу енергії/палива.
+  OSAT не ділить throughput порівну. Номінальний Fab BOM використовує
+  співвідношення input/output 1:1; `w_scr` — вік обліку scrap у тижнях, а
+  `tau` — тривалість у тижнях. Жоден із них не є коефіцієнтом втрати матеріалу.
+  BOM input buffer за замовчуванням дорівнює нулю; додатковий обсяг можна
+  увімкнути окремим `SafetyBufferPolicy(input_buffer_fraction=...)`.
+  `e` та публічна fuel share задають пов'язану потребу енергії/палива.
 - Grid fuels — щотижнева потреба для static base load плюс рівномірно
   розкладена по горизонту grounded Fab energy, обмежена поточним deliverable
   `G_bar`, за public fuel shares. Marginal shortage cost для sink дорівнює
   `static.sinks.pi` (USD/native unit/week). Для grid fuel формула
-  `VOLL [USD/MWh] * fuel_share * 1000 [MWh/GWh]`, якщо fuel unit — GWh;
-  припущення — втрачена генерація дорівнює частці нестачі fuel. Для інших
-  виробничих inputs використовується найбільша sink penalty як conservative
-  proxy при BOM 1:1. Ціни товарів не використовуються; це оцінки збитку, не
-  відкалібровані значення.
+  Модель indirect shortage costs вимкнена за замовчуванням параметром
+  `shortage_cost_model`. У схемі VOLL має одиниці USD/GWh, а fuel stock — GWh;
+  гранична оцінка для grid fuel дорівнює `VOLL + max(pi * R / e)` для
+  unit-сумісних шляхів до Fab та sink. `pi` — USD/output/week, `R` — безрозмірний
+  restoration factor, `e` — GWh/output, тому обидва доданки мають USD/GWh/week.
+  Fuel share обмежує segment generation, але не є коефіцієнтом перерахунку
+  fuel у generation. Для виробничих inputs `pi` поширюється лише явними BOM
+  зв'язками 1:1 з однаковими native units; невідомі одиниці дають `None`.
+  Це маржинальна оцінка втрат за припущенням лінійного виробництва, не ціна
+  товару чи відкалібрована суспільна шкода.
+- Часові потреби — forecast demand лишається розбитим за абсолютним тижнем.
+  Для package need у тиждень `D` OSAT input receipt deadline дорівнює
+  `max(current_week, D - tau_osat)`. Для Fab output, потрібного OSAT у тиждень
+  `S`, planner віднімає observed ETA найшвидшого сумісного Fab→OSAT route; Fab
+  input receipt deadline додатково віднімає `tau_fab`. Отже Fab input дедлайн
+  реалізує `D - tau_osat - ETA_fab_osat - tau_fab` з обрізанням до поточного
+  тижня. `graph_now.tau` дає live edge ETA; приховані transit times не
+  замінюються статичним `tau0`. Allocator порівнює дедлайн receipt із ETA кожної
+  доступної inbound route, а queue forecast додає спостережену чергу, коли
+  увімкнений. ETA для Fab→OSAT при back-planning не включає майбутні черги, які
+  ще не спостерігаються.
 - Grid safety stock — опціональна кінцева reserve target `ibar` після покриття
   споживання. Це не нова витрата запасу щотижня.
 
 Виробничий горизонт за замовчуванням 4 тижні; current observed targets
 переносяться на нього як явне припущення. Налаштування:
-`production_horizon`, `safety_stock`, `include_estimated_arrivals`.
+`production_horizon`, `safety_stock`, `include_estimated_arrivals` і окремий
+`safety_buffer_policy`. `safety_stock` як і раніше керує тільки grid `ibar`
+reserve; він не змінює номінальний BOM.
 Останнє за замовчуванням False: V3/WIP оцінки не приховують дефіцит автоматично.
 Arrivals з unknown датою ніколи не покривають конкретний deadline.
 Unknown stock не стає нульовим покриттям: відповідна потреба не генерується,

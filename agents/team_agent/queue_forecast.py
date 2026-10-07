@@ -10,7 +10,7 @@ import math
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 
@@ -188,8 +188,36 @@ class QueueForecaster:
                     cargo.quantity.value,
                 )
             )
+        # A source's remaining legs use the live observed edge transit times.
+        # Static tau0 is not a valid ETA when the network currently reports a
+        # changed duration. Unknown times keep completion unknown.
+        live_tau = list(network.edge_transit_weeks)
+        active_edges = set()
+        for cargo in tuple(state.pipeline) + tuple(proposed_pipeline):
+            if cargo.edge_id is not None and cargo.lane_status != "unknown":
+                active_edges.update(network.transit_progress(cargo.edge_id, cargo.lane_id).remaining_edges)
+        for cargo in state.queues:
+            if cargo.next_edge_id is not None and cargo.lane_id is not None:
+                active_edges.add(cargo.next_edge_id)
+                active_edges.update(
+                    network.transit_progress(cargo.next_edge_id, cargo.lane_id).remaining_edges
+                )
+        for edge in sorted(active_edges):
+            weeks = reader.number("graph_now.tau", edge)
+            if weeks is None or weeks != int(weeks):
+                incomplete.append(f"queue_forecast:unknown_transit_time:{edge}")
+                continue
+            live_tau[edge] = int(weeks)
         if incomplete:
             return QueueForecast((), (), MappingProxyType({key: None for key in sources}), issues=tuple(incomplete))
+        network = SimpleNamespace(
+            edge_transit_weeks=tuple(live_tau),
+            lane_edges=network.lane_edges,
+            chokepoints=network.chokepoints,
+            edge_head=network.edge_head,
+            edge_tail=network.edge_tail,
+            transit_progress=network.transit_progress,
+        )
         rates = self._rates(reader, network, sources)
         if rates is None:
             return QueueForecast(

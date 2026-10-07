@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
+from math import isfinite
 
 from contracts import need_order_key
 from observations import ObservationReader
@@ -22,6 +23,42 @@ class DeliveryNeed:
     assumptions: tuple[str, ...] = ()
 
 
+def _nominal_fab_inputs(output_quantity: float) -> float:
+    """Return nominal raw input for the current one-to-one Fab BOM proxy.
+
+    Fab ``w_scr`` is the scrap observation window in weeks; it is not a
+    fractional yield loss. ``tau`` is a duration as well. Neither belongs in
+    the nominal material ratio. Any yield loss or reserve needs its own
+    explicitly modeled policy parameter.
+    """
+    return output_quantity
+
+
+@dataclass(frozen=True, slots=True)
+class SafetyBufferPolicy:
+    """Optional fractional buffer for each nominal BOM input.
+
+    It is zero by default and separate from nominal BOM quantities. Existing
+    grid ``ibar`` reserves remain controlled independently by ``safety_stock``.
+    """
+
+    input_buffer_fraction: float = 0.0
+
+    def __post_init__(self):
+        fraction = self.input_buffer_fraction
+        if (
+            isinstance(fraction, bool)
+            or not isinstance(fraction, (int, float))
+            or not isfinite(fraction)
+            or fraction < 0
+        ):
+            raise ValueError("input_buffer_fraction must be a finite nonnegative number")
+
+    def apply(self, nominal_input: float) -> float:
+        """Apply the explicit policy to one nominal input requirement."""
+        return nominal_input * (1.0 + self.input_buffer_fraction)
+
+
 class NeedPlanner:
     def __init__(
         self,
@@ -30,8 +67,9 @@ class NeedPlanner:
         production_horizon=4,
         include_estimated_arrivals=False,
         safety_stock=True,
+        safety_buffer_policy: SafetyBufferPolicy | None = None,
         production_enabled=True,
-        shortage_cost_model=True,
+        shortage_cost_model=False,
     ):
         if not isinstance(production_horizon, int) or isinstance(production_horizon, bool) or production_horizon < 1:
             raise ValueError("production_horizon must be a positive integer")
@@ -39,7 +77,10 @@ class NeedPlanner:
         self.production_horizon = production_horizon
         self.include_estimated_arrivals = include_estimated_arrivals
         self.safety_stock = safety_stock
+        self.safety_buffer_policy = safety_buffer_policy or SafetyBufferPolicy()
         self.production_enabled = bool(production_enabled)
+        if not isinstance(shortage_cost_model, bool):
+            raise ValueError("shortage_cost_model must be a boolean")
         self.shortage_cost_model = bool(shortage_cost_model)
         static = config["static"]
         self.commodities = {name: i for i, name in enumerate(static["commodities"]["id"])}
@@ -50,12 +91,44 @@ class NeedPlanner:
         self._backlog_since = {}
         self.last_issues = ()
 
-    def _shortage_cost(self, pair, reason):
-        """USD/(native unit * week): sink pi; otherwise propagated lost-value proxy.
+    def _downstream_penalty(self, output_name):
+        """Return max reachable sink penalty through the declared 1:1 BOM.
 
-        Assumption: indirect inputs inherit downstream value per unit. Grid fuel
-        uses node VOLL ($/MWh) times the observed fuel share and commodity-unit
-        conversion (GWh -> MWh). This is a transparent marginal proxy, not price.
+        Sink ``pi`` has units USD/(sink unit * weekly cost period). The BOM
+        currently has no conversion coefficients, so propagation is allowed
+        only when adjacent commodity units match exactly.
+        """
+        units = self.config["static"].get("units", {})
+        candidates = []
+        for osat_node in self.config["layout"]["osats"]:
+            profile = self.profiles[osat_node].get("osat", {}).get("packages", {})
+            for raw, package in profile.items():
+                if raw != output_name:
+                    continue
+                if units.get(raw) != units.get(package):
+                    raise ValueError(
+                        f"VOLL unit mismatch in OSAT BOM {raw}->{package}: "
+                        f"{units.get(raw)!r} != {units.get(package)!r}"
+                    )
+                product = self.commodities[package]
+                candidates.extend(
+                    pi for (sink, commodity), pi in self.penalties.items() if commodity == product
+                )
+        return max(candidates, default=None)
+
+    def _shortage_cost(self, pair, reason, reader=None):
+        """Marginal damage in USD per native input unit per weekly period.
+
+        The optional model propagates published sink ``pi`` through explicit
+        1:1 BOM links. For grid fuel, one GWh of unavailable fuel removes at
+        most one GWh of segment generation (the simulator's segment stock is
+        also GWh); its damage is grid VOLL [USD/GWh] plus the lost Fab output
+        value [USD/output/week] times ``R/e`` [output/GWh]. Fuel shares set the
+        segment's generation cap and are not a fuel conversion factor. The
+        Fab term is a conservative max across Fabs connected to this grid.
+        Missing energy observations disable the estimate. A unit mismatch is
+        a configuration error and raises ValueError so an enabled VOLL model
+        cannot silently return a dimensionally invalid cost.
         """
         if not self.shortage_cost_model:
             return None
@@ -67,13 +140,56 @@ class NeedPlanner:
         if reason == "grid_fuel" and "grid" in profile:
             grid = profile["grid"]
             name = self.config["static"]["commodities"]["id"][commodity]
-            share = float(grid.get("shares", {}).get(name, 0.0))
+            unit = self.config["static"].get("units", {}).get(name)
+            if unit not in {"GWh", "GWh fuel"}:
+                raise ValueError(f"VOLL unit mismatch for grid fuel {name}: expected GWh, got {unit!r}")
+            if float(grid.get("shares", {}).get(name, 0.0)) <= 0.0:
+                return None
             voll = float(grid.get("voll", 0.0))
-            # fuel is GWh in the shipped instances; VOLL is USD/MWh.
-            return voll * share * 1000.0
-        # Production inputs inherit the best published downstream unit penalty;
-        # one native input unit is assumed to protect one output unit (BOM proxy).
-        return max(self.penalties.values(), default=0.0) or None
+            if reader is None:
+                return None
+            terms = []
+            for row, fab_node in enumerate(self.config["layout"]["fabs"]):
+                fab = self.profiles[fab_node].get("fab", {})
+                if fab.get("grid") != self.config["static"]["nodes"]["id"][node]:
+                    continue
+                e = float(fab.get("e", 0.0))  # GWh per output unit
+                penalty = self._downstream_penalty(fab.get("product"))
+                restoration = reader.number("graph_now.fab.R", row)
+                if e <= 0 or penalty is None or restoration is None:
+                    continue
+                terms.append(penalty * restoration / e)
+            return voll + max(terms, default=0.0)
+        if reason == "production":
+            input_name = self.config["static"]["commodities"]["id"][commodity]
+            if "osat" in profile:
+                package = profile["osat"].get("packages", {}).get(input_name)
+                units = self.config["static"].get("units", {})
+                if package is None:
+                    return None
+                if units.get(input_name) != units.get(package):
+                    raise ValueError(
+                        f"VOLL unit mismatch in OSAT BOM {input_name}->{package}: "
+                        f"{units.get(input_name)!r} != {units.get(package)!r}"
+                    )
+                package_id = self.commodities[package]
+                return max(
+                    (pi for (sink, item), pi in self.penalties.items() if item == package_id),
+                    default=None,
+                )
+            for fab_node in self.config["layout"]["fabs"]:
+                fab = self.profiles[fab_node].get("fab", {})
+                if fab_node != node or fab.get("input") != input_name:
+                    continue
+                input_unit = self.config["static"].get("units", {}).get(input_name)
+                output_unit = self.config["static"].get("units", {}).get(fab.get("product"))
+                if input_unit != output_unit:
+                    raise ValueError(
+                        f"VOLL unit mismatch in Fab BOM {input_name}->{fab.get('product')}: "
+                        f"{input_unit!r} != {output_unit!r}"
+                    )
+                return self._downstream_penalty(fab.get("product"))
+        return None
 
     def _coverage(self, state, pair, cutoff_week):
         stock = state.available_stock.get(pair)
@@ -91,7 +207,63 @@ class NeedPlanner:
             coverage += arrival.quantity.value
         return coverage
 
-    def _requirements(self, state, reader, issues):
+    def _minimum_route_transit_weeks(self, network, reader, source, destination, commodity):
+        """Observed no-queue ETA for a specific source/destination commodity route.
+
+        Queue work is modeled by the allocator's route completion estimate. This
+        helper only backs production dates out by current observed edge transit;
+        it never substitutes static ``tau0`` when a current edge time is hidden.
+        """
+        if network is None:
+            return 0
+        options = []
+        for slot in network.slots_to.get((destination, commodity), ()):
+            route = network.routes[slot]
+            if route.source_node != source:
+                continue
+            transit = []
+            for edge in route.edges:
+                weeks = reader.number("graph_now.tau", edge)
+                if weeks is None or weeks != int(weeks):
+                    break
+                transit.append(int(weeks))
+            else:
+                options.append(sum(transit))
+        return min(options) if options else None
+
+    def _net_events(self, state, pair, events, issues):
+        """Net dated requirements against stock and eligible arrivals once."""
+        stock = state.available_stock.get(pair)
+        if stock is None or stock.value is None:
+            issues.append(f"production:{pair}:unknown_time_phased_stock")
+            return None
+        balance = stock.value
+        arrivals = sorted(
+            (
+                arrival.arrival_week,
+                arrival.quantity.value,
+            )
+            for arrival in state.arrivals
+            if (arrival.destination_node, arrival.commodity_id) == pair
+            and arrival.arrival_week is not None
+            and arrival.quantity.value is not None
+            and (
+                self.include_estimated_arrivals
+                or (arrival.source == "observed" and arrival.quantity.source == "observed")
+            )
+        )
+        remaining, index = [], 0
+        for due, quantity in sorted(events):
+            while index < len(arrivals) and arrivals[index][0] <= due:
+                balance += arrivals[index][1]
+                index += 1
+            covered = min(balance, quantity)
+            balance -= covered
+            if quantity - covered > 0:
+                remaining.append((due, quantity - covered))
+        return remaining
+
+    def _requirements(self, state, reader, issues, network=None):
         requirements = defaultdict(list)
         values, _seen = reader.field("demand_forecast.qty")
         if values.ndim != 2 or values.shape[0] != len(self.config["layout"]["demands"]):
@@ -119,114 +291,178 @@ class NeedPlanner:
         # Translate only published downstream package demand into upstream
         # production inputs. No capacity becomes a target by itself.
         if self.production_enabled:
-            packages_needed = defaultdict(float)
+            package_events = defaultdict(list)
             for (sink, product), rows in requirements.items():
                 final = self.config["static"]["commodities"]["id"][product]
                 for due, qty, *_ in rows:
                     if due < state.week + count:
-                        packages_needed[final] += qty
-            # Finished packages already at any capable OSAT cover demand before
-            # assigning capacity. Unknown stock blocks that package's production
-            # target rather than being interpreted as zero.
+                        package_events[final].append((due, qty))
+
+            pending_packages = {name: sorted(events) for name, events in package_events.items()}
             osat_nodes = tuple(self.config["layout"]["osats"])
-            blocked_packages = set()
-            cutoff = state.week + count - 1
-            for node in osat_nodes:
-                for package in self.profiles[node]["osat"]["packages"].values():
-                    pair = node, self.commodities[package]
-                    coverage = self._coverage(state, pair, cutoff)
-                    if coverage is None:
-                        blocked_packages.add(package)
-                        issues.append(f"production:{node}:{package}:unknown_finished_stock")
-                    else:
-                        packages_needed[package] = max(0.0, packages_needed[package] - coverage)
-            remaining_packages = dict(packages_needed)
-            osat_targets = []
-            raw_input_needs = defaultdict(float)
-            for row, node in enumerate(self.config["layout"]["osats"]):
+            for package, events in tuple(pending_packages.items()):
+                for node in osat_nodes:
+                    if package not in self.profiles[node]["osat"]["packages"].values():
+                        continue
+                    events = self._net_events(
+                        state, (node, self.commodities[package]), events, issues
+                    )
+                    if events is None:
+                        break
+                pending_packages[package] = [] if events is None else events
+            raw_events = defaultdict(list)
+            osat_weekly_capacity = defaultdict(float)
+            osat_rows = {node: row for row, node in enumerate(self.config["layout"]["osats"])}
+            for node in self.config["layout"]["osats"]:
+                row = osat_rows[node]
                 cap = reader.number("graph_now.osat.thr_eff", row)
                 if cap is None:
                     issues.append(f"osat:{node}:unknown_throughput")
                     continue
-                profile = self.profiles[node]["osat"]["packages"]
-                capacity_left = cap * count
-                for raw, package in sorted(profile.items()):
-                    if package in blocked_packages:
+                for raw, package in sorted(self.profiles[node]["osat"]["packages"].items()):
+                    events = pending_packages.get(package, [])
+                    if not events:
                         continue
-                    target = min(capacity_left, remaining_packages.get(package, 0.0))
-                    if target <= 0:
-                        continue
-                    capacity_left -= target
-                    remaining_packages[package] -= target
-                    osat_targets.append((node, raw, target))
-                    raw_input_needs[node, raw] += target
-                    pair = node, self.commodities[raw]
-                    requirements[pair].append(
-                        (
-                            state.week,
-                            target,
-                            2.0,
-                            "production",
-                            self._shortage_cost(pair, "production"),
+                    tau = int(self.profiles[node]["osat"].get("tau", 0))
+                    residual, targets = [], []
+                    for need_date, quantity in events:
+                        production_week = max(state.week, need_date - tau)
+                        capacity_left = max(0.0, cap - osat_weekly_capacity[node, production_week])
+                        target = min(capacity_left, quantity)
+                        osat_weekly_capacity[node, production_week] += target
+                        if target > 0:
+                            targets.append((production_week, target))
+                        if quantity > target:
+                            residual.append((need_date, quantity - target))
+                    pending_packages[package] = residual
+                    raw_id = self.commodities[raw]
+                    for production_week, target in targets:
+                        buffered_input = self.safety_buffer_policy.apply(target)
+                        raw_events[node, raw_id].append((production_week, buffered_input))
+                        pair = node, raw_id
+                        requirements[pair].append(
                             (
-                                f"BOM: {raw} input maps to {package}; target from published downstream forecast",
-                                "shared OSAT throughput is a ceiling; no equal product split",
-                            ),
+                                production_week,
+                                buffered_input,
+                                2.0,
+                                "production",
+                                self._shortage_cost(pair, "production"),
+                                (
+                                    f"BOM: {raw} input maps to {package}; due before OSAT production",
+                                    f"OSAT lead time {tau} weeks; production starts by week {production_week}",
+                                    "shared OSAT throughput is a per-week ceiling; no equal product split",
+                                ),
+                            )
                         )
+
+            fab_weekly_capacity = defaultdict(float)
+            raw_to_ship = defaultdict(list)
+            for (osat_node, raw_id), events in raw_events.items():
+                net_raw = self._net_events(state, (osat_node, raw_id), events, issues)
+                if net_raw is None:
+                    continue
+                raw_name = self.config["static"]["commodities"]["id"][raw_id]
+                raw_to_ship[raw_name].extend((osat_node, due, qty) for due, qty in net_raw)
+
+            for output, demand_events in raw_to_ship.items():
+                demand_by_fab = []
+                for osat_node, due, qty in demand_events:
+                    possible = []
+                    for fab_node in self.config["layout"]["fabs"]:
+                        fab = self.profiles[fab_node]["fab"]
+                        if fab["product"] != output:
+                            continue
+                        output_id = self.commodities[output]
+                        route_eta = self._minimum_route_transit_weeks(
+                            network, reader, fab_node, osat_node, output_id
+                        )
+                        if route_eta is not None:
+                            possible.append((fab_node, route_eta))
+                    if not possible:
+                        issues.append(f"fab:{output}:unknown_route_eta_to:{osat_node}")
+                        continue
+                    # Choose the quickest observed route; the allocator then
+                    # scores every candidate route against the same receipt deadline.
+                    fab_node, route_eta = min(possible, key=lambda item: item[1])
+                    demand_by_fab.append(
+                        (fab_node, osat_node, max(state.week, due - route_eta), qty, route_eta)
                     )
-            # Existing raw inputs at the consuming OSATs reduce upstream Fab
-            # production. Fab finished raw stock is also a source that can be
-            # shipped, so subtract it from the residual input requirement.
-            raw_needed = defaultdict(float)
-            for (node, raw), target in raw_input_needs.items():
-                pair = node, self.commodities[raw]
-                coverage = self._coverage(state, pair, cutoff)
-                if coverage is None:
-                    issues.append(f"production:{node}:{raw}:unknown_input_stock")
-                    continue
-                raw_needed[raw] += max(0.0, target - coverage)
-            for node in self.config["layout"]["fabs"]:
-                fab = self.profiles[node]["fab"]
-                output = fab["product"]
-                pair = node, self.commodities[output]
-                coverage = self._coverage(state, pair, cutoff)
-                if coverage is None:
-                    raw_needed[output] = 0.0
-                    issues.append(f"production:{node}:{output}:unknown_fab_output_stock")
-                else:
-                    raw_needed[output] = max(0.0, raw_needed[output] - coverage)
-            remaining_raw = dict(raw_needed)
-            for row, node in enumerate(self.config["layout"]["fabs"]):
-                profile = self.profiles[node]["fab"]
-                output, input_name = profile["product"], profile["input"]
-                capacity = reader.number("graph_now.fab.cap_eff", row)
-                if capacity is None:
-                    issues.append(f"fab:{node}:unknown_capacity")
-                    continue
-                target = min(remaining_raw.get(output, 0.0), capacity * count)
-                if target <= 0:
-                    continue
-                remaining_raw[output] -= target
-                pair = node, self.commodities[input_name]
-                inputs = target * (1.0 + float(profile.get("w_scr", 0.0)) / max(float(profile.get("tau", 1)), 1.0))
-                energy = float(profile.get("e", 0.0)) * target
-                grid_name = profile.get("grid")
-                if grid_name:
-                    grid_energy[grid_name] += energy
-                requirements[pair].append(
-                    (
-                        state.week,
-                        inputs,
-                        2.0,
-                        "production",
-                        self._shortage_cost(pair, "production"),
-                        (
-                            f"BOM: {input_name} per {output} includes nominal scrap factor w_scr/tau",
-                            f"target {target:g} output units is bounded by downstream package forecast "
-                            "and observed capacity",
-                        ),
+
+                fab_nodes = [
+                    fab_node
+                    for fab_node in self.config["layout"]["fabs"]
+                    if self.profiles[fab_node]["fab"]["product"] == output
+                ]
+                ship_events = [(due, qty) for _fab, _osat, due, qty, _eta in demand_by_fab]
+                for fab_node in fab_nodes:
+                    ship_events = self._net_events(
+                        state, (fab_node, self.commodities[output]), ship_events, issues
                     )
-                )
+                    if ship_events is None:
+                        break
+                if ship_events is None:
+                    continue
+
+                uncovered_by_date = defaultdict(float)
+                for due, qty in ship_events:
+                    uncovered_by_date[due] += qty
+                net_demand_by_fab = []
+                for fab_node, osat_node, due, _qty, route_eta in sorted(
+                    demand_by_fab, key=lambda item: (item[2], item[0], item[1])
+                ):
+                    remaining = min(_qty, uncovered_by_date[due])
+                    uncovered_by_date[due] -= remaining
+                    if remaining > 0:
+                        net_demand_by_fab.append((fab_node, osat_node, due, remaining, route_eta))
+
+                # Retain each event's receiving OSAT so route ETA and production
+                # start dates remain attached to the correct downstream demand.
+                remaining_events = list(net_demand_by_fab)
+                for fab_node in fab_nodes:
+                    if not remaining_events:
+                        break
+                    fab_row = self.config["layout"]["fabs"].index(fab_node)
+                    fab = self.profiles[fab_node]["fab"]
+                    capacity = reader.number("graph_now.fab.cap_eff", fab_row)
+                    if capacity is None:
+                        issues.append(f"fab:{fab_node}:unknown_capacity")
+                        continue
+                    tau = int(fab.get("tau", 0))
+                    candidates = [entry for entry in remaining_events if entry[0] == fab_node]
+                    next_remaining = [entry for entry in remaining_events if entry[0] != fab_node]
+                    for _node, osat_node, ship_date, quantity, route_eta in candidates:
+                        production_week = max(state.week, ship_date - tau)
+                        capacity_left = max(0.0, capacity - fab_weekly_capacity[fab_node, production_week])
+                        target = min(capacity_left, quantity)
+                        if target <= 0:
+                            next_remaining.append((_node, osat_node, ship_date, quantity, route_eta))
+                            continue
+                        fab_weekly_capacity[fab_node, production_week] += target
+                        if quantity > target:
+                            next_remaining.append((_node, osat_node, ship_date, quantity - target, route_eta))
+                        input_name = fab["input"]
+                        pair = fab_node, self.commodities[input_name]
+                        nominal_inputs = _nominal_fab_inputs(target)
+                        inputs = self.safety_buffer_policy.apply(nominal_inputs)
+                        requirements[pair].append(
+                            (
+                                production_week,
+                                inputs,
+                                2.0,
+                                "production",
+                                self._shortage_cost(pair, "production"),
+                                (
+                                    f"BOM: {input_name} per {output} uses the nominal one-to-one input ratio",
+                                    f"Fab lead time {tau} weeks and observed route ETA {route_eta} "
+                                    f"weeks; production starts by week {production_week}",
+                                ),
+                            )
+                        )
+                        energy = float(fab.get("e", 0.0)) * target
+                        grid_name = fab.get("grid")
+                        if grid_name:
+                            grid_energy[grid_name, production_week] += energy
+                    remaining_events = next_remaining
         for row, node in enumerate(self.config["layout"]["grids"]):
             generation = reader.number("graph_now.grid.G_bar", row)
             if generation is None:
@@ -234,37 +470,38 @@ class NeedPlanner:
                 continue
             grid_profile = self.profiles[node]["grid"]
             base_load = float(grid_profile.get("base_load", 0.0))
-            planned_generation = min(
-                generation,
-                base_load + grid_energy.get(self.config["static"]["nodes"]["id"][node], 0.0) / count,
-            )
             for name, share in grid_profile["shares"].items():
                 if name not in self.commodities:
                     continue
                 pair = node, self.commodities[name]
                 for h in range(count):
+                    due_week = state.week + h
+                    planned_generation = min(
+                        generation,
+                        base_load
+                        + grid_energy.get((self.config["static"]["nodes"]["id"][node], due_week), 0.0),
+                    )
                     requirements[pair].append(
                         (
-                            state.week + h,
+                            due_week,
                             float(share) * planned_generation,
                             3.0,
                             "grid_fuel",
-                            self._shortage_cost(pair, "grid_fuel"),
+                            self._shortage_cost(pair, "grid_fuel", reader),
                             (
                                 "fuel requirement covers static base load plus grounded Fab energy",
                                 "generation is capped by observed deliverable G_bar, "
                                 "not treated as a production target",
-                                "horizon Fab energy is spread evenly across production_horizon weeks",
+                                "Fab energy is assigned to its scheduled production week",
                             ),
                         )
                     )
         return requirements
 
     def plan(self, state, observation, network):
-        del network  # Topology/feasibility belongs to the allocator, not demand projection.
         reader = ObservationReader(observation)
         issues = []
-        requirements = self._requirements(state, reader, issues)
+        requirements = self._requirements(state, reader, issues, network)
         arrivals = defaultdict(float)
         ids = set()
         for arrival in state.arrivals:

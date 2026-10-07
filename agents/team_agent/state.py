@@ -94,7 +94,15 @@ class StateBuilder:
                 progress = network.transit_progress(edge, lane)
             destination = None if progress is None else progress.destination_node
             remaining_edges = () if progress is None else progress.remaining_edges
-            remaining_weeks = None if progress is None else progress.remaining_nominal_transit_weeks
+            remaining_times = []
+            if progress is not None:
+                for remaining_edge in remaining_edges:
+                    transit = reader.number("graph_now.tau", remaining_edge)
+                    if transit is None or transit != int(transit):
+                        remaining_times = []
+                        break
+                    remaining_times.append(int(transit))
+            remaining_weeks = sum(remaining_times) if len(remaining_times) == len(remaining_edges) else None
             lot_id = f"pipeline:{edge}:{commodity}:{status}:{lane}:{due}:{row}"
             qty = reader.quantity("pipeline.qty", row)
             pipeline.append(
@@ -106,6 +114,13 @@ class StateBuilder:
                 issues.append(f"{lot_id}:incomplete_route_or_time")
             if destination is not None:
                 final_week = due if progress.reaches_destination else None
+                final_source = "observed" if progress.reaches_destination else "unknown"
+                if final_week is None and remaining_weeks is not None and not any(
+                    network.edge_tail[remaining_edge] in network.chokepoints
+                    for remaining_edge in remaining_edges
+                ):
+                    final_week = due + remaining_weeks
+                    final_source = "estimated"
                 arrivals.append(
                     ExpectedArrival(
                         f"arrival:{lot_id}",
@@ -115,7 +130,7 @@ class StateBuilder:
                         commodity,
                         qty,
                         final_week,
-                        "observed" if final_week is not None else "unknown",
+                        final_source,
                     )
                 )
 
@@ -181,7 +196,14 @@ class StateBuilder:
             lot_id = f"wip:{node}:{commodity}:{due}:{row}"
             qty = reader.quantity("wip.qty", row)
             wip.append(WorkInProgress(lot_id, node, commodity, qty, due))
-            # Gross WIP can still suffer future scrap: its future amount is not confirmed stock.
+            # OSAT package WIP has a known completion week and is not subject
+            # to the Fab scrap process, so observed lots are confirmed dated
+            # supply. Fab WIP remains estimated because future scrap can
+            # reduce its gross amount before it matures.
+            confirmed_osat_output = (
+                node in self.layout["osats"] and due is not None and qty.source == "observed"
+            )
+            arrival_qty = qty if confirmed_osat_output else Quantity(qty.value, "estimated")
             arrivals.append(
                 ExpectedArrival(
                     f"arrival:{lot_id}",
@@ -189,9 +211,9 @@ class StateBuilder:
                     "wip",
                     node,
                     commodity,
-                    Quantity(qty.value, "estimated"),
+                    arrival_qty,
                     due,
-                    "observed" if due is not None else "unknown",
+                    "observed" if confirmed_osat_output else "estimated" if due is not None else "unknown",
                 )
             )
         state = StateSnapshot(
