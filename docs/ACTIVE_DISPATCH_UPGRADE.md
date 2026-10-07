@@ -69,3 +69,42 @@ budget. Inspect budget-denied unique needs, actual quantities dispatched and
 received, unknown timing counts, and all cost components. Then compare the
 combined candidate with the original frozen benchmark when those exact folders
 are available. Never rewrite the frozen baseline or infer it from Git HEAD.
+
+## Stage 3: recover sooner when shortage valuation is missing
+
+Hypothesis: among late deliveries, choosing cheap slow transport when the
+planner supplies no marginal shortage cost unnecessarily prolongs shortage.
+`None` now means missing valuation, rather than zero damage. Timely options
+still rank first. Known late options with missing valuation rank by completion
+delay, then transport plus holding cost, volume and stable slot ID. Explicit
+zero remains zero; supplied USD/native-unit/week penalties retain the existing
+cost-plus-delay comparison. Unknown options remain behind known in-horizon
+options and use the no-queue lower bound for ordering only, never certification.
+Forecast scheduling follows the same fastest-first rule for nominally late,
+unpriced needs. Agreed inter-need priority/deadline/ID order is unchanged.
+
+Fields: DeliveryNeed due and optional shortage valuation, candidate completion
+or unknown flag, route transit/rates and transport/holding cost. No new field,
+commodity exception, planner rule or budget increase. Faster transport can
+increase freight; this is an explicit tradeoff for teammate evaluation, not a
+claim that every episode improves.
+
+Evaluation: compare STAGE3 against STAGE2, then combined against the matched
+parent and frozen references, with the same Small/Full paired commands. Measure
+total RSS and shortage/shed *and* freight/holding. Track realized delivery delay;
+do not confuse nominal bounds or withdrawn ETA labels with actual arrivals.
+
+## Regression handoff
+
+Run `uv run pytest tests/test_allocation.py tests/test_dispatch_search.py
+tests/test_dispatch_uncertainty.py tests/test_dispatch_lateness.py
+tests/test_announced_delivery_eta.py tests/test_closure_delivery.py
+tests/test_allocator_diagnostics.py`, followed by the integration/state/planner
+regressions and the normal suite on Linux. Run `sbf check` on Tiny/Small/Full
+and compare with CPU metering. These regression files were written here but
+their execution and RSS evaluation are delegated to the teammate as requested.
+
+The allocator cannot fulfill a request the planner never emits. Wafer input
+coverage, projected nuclear fuel consumption and missing terminal upstream
+needs remain separate planner investigations. These changes spend existing
+needs' dispatch resources better; they do not fabricate needs, sources or routes.

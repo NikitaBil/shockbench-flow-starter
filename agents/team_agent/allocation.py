@@ -106,6 +106,27 @@ class Allocator:
         late = None if eta is None else max(0, eta - need.due_week)
         cost = option.transport_cost_per_unit + option.queue_holding_cost_per_unit
         penalty = need.shortage_cost_per_unit_usd
+        if eta is None:
+            lower_bound = option.no_wait_arrival_week
+            if option.snapshot_throughput > 0:
+                lower_bound += max(0, math.ceil(quantity / option.snapshot_throughput) - 1)
+            # Unknown remains a separate tier, never "on time". Its lower
+            # bound orders last-resort dispatches only, without inventing ETA.
+            economic_bound = (
+                cost + max(0, lower_bound - need.due_week) * penalty if penalty is not None else lower_bound
+            )
+            return (
+                2,
+                economic_bound,
+                lower_bound if penalty is not None else cost,
+                -quantity,
+                option.slot_id,
+            ), None
+        if late > 0 and penalty is None:
+            # Missing marginal shortage cost is not zero damage. When every
+            # feasible route is late, restore service earlier before choosing
+            # the cheaper equally fast route. No USD penalty is fabricated.
+            return (1, late, cost, -quantity, option.slot_id), eta
         economic = cost + (late * penalty if late is not None and penalty is not None else 0)
         return (
             2 if eta is None else int(late > 0),
@@ -114,6 +135,17 @@ class Allocator:
             -quantity,
             option.slot_id,
         ), eta
+
+    @staticmethod
+    def _forecast_order(option, need):
+        nominally_late = option.no_wait_arrival_week > need.due_week
+        fastest_first = nominally_late and need.shortage_cost_per_unit_usd is None
+        return (
+            int(nominally_late),
+            option.no_wait_arrival_week if fastest_first else option.transport_cost_per_unit,
+            option.transport_cost_per_unit if fastest_first else option.no_wait_arrival_week,
+            option.slot_id,
+        )
 
     def _optimistic_key(self, option, need, quantity, snapshot):
         """A ranking bound, never a completion forecast or an empty queue.
@@ -309,12 +341,7 @@ class Allocator:
                 # never promoted to a known/on-time completion estimate.
                 options = sorted(
                     options,
-                    key=lambda option: (
-                        int(option.no_wait_arrival_week > need.due_week),
-                        option.transport_cost_per_unit,
-                        option.no_wait_arrival_week,
-                        option.slot_id,
-                    ),
+                    key=lambda option: self._forecast_order(option, need),
                 )
             while remaining > 0:
                 candidates = []
@@ -452,7 +479,8 @@ class Allocator:
                             "closure_route_comparison",
                             f"Chose slot {route.slot_id}, due {need.due_week}; alternatives "
                             f"(slot, conditional ETA, transport + queue bound USD/unit): {compared}. "
-                            "Timely first, then transport + queue bound + supplied per-week shortage penalty; "
+                            "Timely first; priced needs use transport + queue bound + shortage penalty; "
+                            "unpriced late needs prefer earlier restoration then cost; "
                             "stable slot tie-break; no future reservations.",
                             need.need_id,
                             route.slot_id,
