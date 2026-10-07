@@ -192,25 +192,39 @@ class Allocator:
             key = need.destination_node, need.commodity_id
             if key not in cache:
                 cache[key] = self.delivery.options(snapshot, *key)
-            if not cache[key] and self.trace_callback is not None:
+            if not cache[key]:
                 slots = net.slots_to.get(key, ())
                 code = "all_delivery_slots_prohibited" if slots else "no_action_slot_to_destination"
-                self._trace(
-                    need,
-                    need_rank,
-                    state.week,
-                    None,
-                    "route_lookup",
-                    code,
-                    static_slots=list(slots),
-                    commodity_destinations=sorted(
-                        {r.destination_node for r in net.routes if r.commodity_id == need.commodity_id}
-                    ),
-                    incoming_commodities=sorted(
-                        {r.commodity_id for r in net.routes if r.destination_node == need.destination_node}
-                    ),
-                    need_reason=need.reason,
+                reasons.append(
+                    DecisionReason(
+                        code,
+                        f"Existing delivery slots {tuple(slots)} were excluded by current permission estimates."
+                        if slots
+                        else "StaticNetwork has no action slot ending at this destination for this commodity; "
+                        "check upstream need semantics. No route was invented.",
+                        need.need_id,
+                    )
                 )
+                if self.trace_callback is not None:
+                    self._trace(
+                        need,
+                        need_rank,
+                        state.week,
+                        None,
+                        "route_lookup",
+                        code,
+                        static_slots=list(slots),
+                        permission_observed=(
+                            all(snapshot.routes[slot].permission_observed for slot in slots) if slots else None
+                        ),
+                        commodity_destinations=sorted(
+                            {r.destination_node for r in net.routes if r.commodity_id == need.commodity_id}
+                        ),
+                        incoming_commodities=sorted(
+                            {r.commodity_id for r in net.routes if r.destination_node == need.destination_node}
+                        ),
+                        need_reason=need.reason,
+                    )
             remaining = float(need.quantity)
             blocked = set()
             options = cache[key]

@@ -482,6 +482,10 @@ def test_route_trace_separates_absent_action_slot_from_sanctions(api):
     assert routes["absent"]["static_slots"] == []
     assert routes["absent"]["commodity_destinations"] == [3, 4, 5]
     assert all(n.reason == "no_permitted_delivery_slot" for n in result.unmet_needs)
+    assert {(r.need_id, r.code) for r in result.reasons if r.need_id} == {
+        ("banned", "all_delivery_slots_prohibited"),
+        ("absent", "no_action_slot_to_destination"),
+    }
     assert not any(e["stage"] == "eta" for e in events)
 
 
