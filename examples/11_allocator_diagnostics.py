@@ -7,6 +7,7 @@ offline requirements/serialization are outside Agent time. This is not RSS.
 """
 
 import hashlib
+import inspect
 import json
 import shutil
 import sys
@@ -123,7 +124,10 @@ def replay(folder, task, entropy, episode, weeks):
                 # Pure diagnostic re-evaluation; never call the stateful plan twice.
                 reader = plan.__func__.__globals__["ObservationReader"](obs)
                 issues = []
-                requirements = planner._requirements(state, reader, issues, net)
+                arguments = (state, reader, issues)
+                if "network" in inspect.signature(planner._requirements).parameters:
+                    arguments += (net,)
+                requirements = planner._requirements(*arguments)
                 row["needs"] = [asdict(n) for n in needs]
                 row["planner_issues"] = list(planner.last_issues)
                 row["unmet_needs"] = [asdict(n) for n in allocation.unmet_needs]
