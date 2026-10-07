@@ -104,6 +104,39 @@ regressions and the normal suite on Linux. Run `sbf check` on Tiny/Small/Full
 and compare with CPU metering. These regression files were written here but
 their execution and RSS evaluation are delegated to the teammate as requested.
 
+Reproduce immutable, enabled agent ZIPs from the stage commits using
+`uv run python scripts/prepare_dispatch_comparison.py`. The printed output
+directory contains `before.zip`, `search.zip`, `dispatch.zip`, `candidate.zip`,
+the corresponding agent folders and `manifest.json` with commit IDs and packed
+SHA-256. This uses the benchmark's submission packer and `check_zip` archive
+validation (not timed execution), does not execute an agent,
+and refuses existing output directories. All stages use identical existing
+`allocation_enabled=true, queue_eta_enabled=true` params. No new feature flag
+must be enabled. Planner defaults are identical between stages; the original
+uncommitted frozen candidate is a separate reference and is not reconstructed.
+
+| Variant | Agent commit | Compare against |
+| --- | --- | --- |
+| before | `0e9b92b` | matched current parent, allocation enabled |
+| search | `f39133b` | before |
+| dispatch | `727c6d9` | search |
+| candidate | `a8ab160` | dispatch, then before and exact frozen references |
+
+From the generated directory, run these as single-line commands (Linux):
+
+```sh
+uv run sbf compare search.zip before.zip --task=small --episodes=16 --entropy=67890 --cpu_budget=True
+uv run sbf compare dispatch.zip search.zip --task=small --episodes=16 --entropy=67890 --cpu_budget=True
+uv run sbf compare candidate.zip dispatch.zip --task=small --episodes=16 --entropy=67890 --cpu_budget=True
+uv run sbf compare candidate.zip before.zip --task=small --episodes=16 --entropy=67890 --cpu_budget=True
+```
+
+Alternatively pass full generated ZIP paths from the repository root. Repeat
+with `--task=full`; use the exact original frozen candidate/baseline as additional
+comparisons. Root 0 is a separate confirmation after deciding on changes, not
+the basis for tuning. Check the paired RSS interval, per-episode differences,
+cost components and CPU rather than using a successful dispatch as score proof.
+
 The allocator cannot fulfill a request the planner never emits. Wafer input
 coverage, projected nuclear fuel consumption and missing terminal upstream
 needs remain separate planner investigations. These changes spend existing

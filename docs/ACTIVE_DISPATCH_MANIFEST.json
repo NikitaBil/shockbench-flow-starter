@@ -1,0 +1,39 @@
+{
+  "params": {
+    "allocation_enabled": true,
+    "queue_eta_enabled": true
+  },
+  "official_tests_run": false,
+  "rss_measured": false,
+  "note": "before is a matched current-parent allocator, not the original October 6 frozen candidate",
+  "stages": {
+    "before": {
+      "commit": "0e9b92ba756ce8aedc620ac9fc4c813502a816f8",
+      "sha256": "709f66349e937f7156c869e294025fc2ec8ad89e4bff295b77b2f9cc21c0bde4",
+      "archive_check_passed": true,
+      "file_count": 16,
+      "unpacked_bytes": 169860
+    },
+    "search": {
+      "commit": "f39133b0ff5f416a17d9a535f052fb5179c5603f",
+      "sha256": "de475d2ddb85890ce94bf3b9caf73ee081c26a34cfce0401a00e7156f4e8e9ee",
+      "archive_check_passed": true,
+      "file_count": 16,
+      "unpacked_bytes": 171527
+    },
+    "dispatch": {
+      "commit": "727c6d9fb6994b7f6012e36c02d949119bae9b4a",
+      "sha256": "a5a343e8d273a3c233bcc6deee39ff495d3ed6cdd80e1a6694ed80906dd44287",
+      "archive_check_passed": true,
+      "file_count": 16,
+      "unpacked_bytes": 177527
+    },
+    "candidate": {
+      "commit": "a8ab1600e855ce7d24b9eca32edb751c570b7f35",
+      "sha256": "f3957e4569cc66a17f9ae99829e4d0784ee3e00913e4a3a754a4452b124955db",
+      "archive_check_passed": true,
+      "file_count": 16,
+      "unpacked_bytes": 178987
+    }
+  }
+}
