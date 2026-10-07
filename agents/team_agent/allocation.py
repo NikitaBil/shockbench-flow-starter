@@ -41,6 +41,27 @@ class Allocator:
         self.allowed = tuple(config["static"]["edges"]["K"])
         self.last_snapshot = None
         self._snapshot_input = None
+        # Local diagnostic hook; absent during normal Agent execution. Does
+        # not alter the team handoff or keep an unbounded runtime trace.
+        self.trace_callback = None
+
+    def _trace(self, need, rank, week, slot, stage, reason, **details):
+        if self.trace_callback is not None:
+            self.trace_callback(
+                dict(
+                    week=week,
+                    need_id=need.need_id,
+                    need_rank=rank,
+                    priority=need.priority,
+                    due_week=need.due_week,
+                    destination_node=need.destination_node,
+                    commodity_id=need.commodity_id,
+                    slot_id=slot,
+                    stage=stage,
+                    reason=reason,
+                    **details,
+                )
+            )
 
     def _snapshot(self, observation):
         week = int(observation["week"][0])
@@ -167,10 +188,29 @@ class Allocator:
         fleet = dict(fleet_start)
         flows = np.zeros(len(net.routes), dtype=np.float64)
         unmet, reasons, cache = [], [], {}
-        for need in sorted(needs, key=need_order_key):
+        for need_rank, need in enumerate(sorted(needs, key=need_order_key), 1):
             key = need.destination_node, need.commodity_id
             if key not in cache:
                 cache[key] = self.delivery.options(snapshot, *key)
+            if not cache[key] and self.trace_callback is not None:
+                slots = net.slots_to.get(key, ())
+                code = "all_delivery_slots_prohibited" if slots else "no_action_slot_to_destination"
+                self._trace(
+                    need,
+                    need_rank,
+                    state.week,
+                    None,
+                    "route_lookup",
+                    code,
+                    static_slots=list(slots),
+                    commodity_destinations=sorted(
+                        {r.destination_node for r in net.routes if r.commodity_id == need.commodity_id}
+                    ),
+                    incoming_commodities=sorted(
+                        {r.commodity_id for r in net.routes if r.destination_node == need.destination_node}
+                    ),
+                    need_reason=need.reason,
+                )
             remaining = float(need.quantity)
             blocked = set()
             while remaining > 0:
@@ -181,9 +221,13 @@ class Allocator:
                     status = snapshot.routes[route.slot_id]
                     if status.closed_chokepoints or status.zero_capacity_edges or status.snapshot_throughput <= 0:
                         blocked.add("currently_blocked_delivery_route")
+                        self._trace(
+                            need, need_rank, state.week, route.slot_id, "prefilter", "currently_blocked_delivery_route"
+                        )
                         continue
                     if not option.permission_observed:
                         blocked.add("unconfirmed_permission")
+                        self._trace(need, need_rank, state.week, route.slot_id, "prefilter", "unconfirmed_permission")
                         continue
                     weight = self._weight(route.edge_id, route.lane_id)
                     quantity = min(remaining, stocks.get(origin, 0.0), float(edges[route.edge_id]))
@@ -191,9 +235,50 @@ class Allocator:
                         quantity = min(quantity, fleet[route.pool] / weight)
                     if quantity <= 0:
                         blocked.add("current_resources_exhausted_or_unknown")
+                        code = (
+                            "no_source_stock"
+                            if stocks.get(origin, 0.0) <= 0
+                            else "entry_capacity_exhausted"
+                            if edges[route.edge_id] <= 0
+                            else "fleet_budget_exhausted"
+                        )
+                        self._trace(
+                            need,
+                            need_rank,
+                            state.week,
+                            route.slot_id,
+                            "prefilter",
+                            code,
+                            source_stock=stocks.get(origin, 0.0),
+                            entry_capacity=float(edges[route.edge_id]),
+                            fleet_remaining=fleet[route.pool],
+                            fleet_weight=weight,
+                            quantity=quantity,
+                        )
                         continue
                     if predictor is not None:
+                        calls_before = predictor.calls
+                        cached_before = (option.slot_id, quantity) in predictor.cache
                         option = predictor.evaluate(option, quantity)
+                        self._trace(
+                            need,
+                            need_rank,
+                            state.week,
+                            route.slot_id,
+                            "eta",
+                            next((flag for flag in option.delay_flags if flag.startswith("queue_eta_")), "estimated"),
+                            source_stock=stocks.get(origin, 0.0),
+                            entry_capacity=float(edges[route.edge_id]),
+                            permission_observed=option.permission_observed,
+                            fleet_remaining=fleet[route.pool],
+                            fleet_weight=weight,
+                            quantity=quantity,
+                            calls_before=calls_before,
+                            calls_after=predictor.calls,
+                            cache_hit=cached_before,
+                            eta=option.estimated_completion_week,
+                            no_wait_arrival=option.no_wait_arrival_week,
+                        )
                     rank, eta = self._candidate_key(option, need, quantity)
                     if eta is None:
                         blocked.add("delivery_eta_unknown")
@@ -214,6 +299,19 @@ class Allocator:
                 edges[route.edge_id] -= qty
                 fleet[route.pool] = max(0.0, fleet[route.pool] - weight * qty)
                 remaining = max(0.0, remaining - qty)
+                self._trace(
+                    need,
+                    need_rank,
+                    state.week,
+                    route.slot_id,
+                    "assignment",
+                    "eta_late" if eta > need.due_week else "eta_on_time_estimate",
+                    quantity=qty,
+                    eta=eta,
+                    late_weeks=max(0, eta - need.due_week),
+                    overdue_at_dispatch=need.due_week < state.week,
+                    no_wait_arrival=option.no_wait_arrival_week,
+                )
                 if predictor is not None:
                     predictor.accept(option, qty, eta)
                 reasons.append(
@@ -266,6 +364,7 @@ class Allocator:
                     else "no_permitted_delivery_slot"
                 )
                 unmet.append(UnmetNeed(need.need_id, remaining, reason))
+                self._trace(need, need_rank, state.week, None, "unmet", reason, quantity=remaining)
         usage = []
         for key, start in stock_start.items():
             used = start - stocks[key]

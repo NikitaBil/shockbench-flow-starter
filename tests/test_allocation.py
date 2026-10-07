@@ -450,6 +450,73 @@ def test_queue_eta_limited_horizon_is_unresolved_not_a_nominal_completion(api, m
     assert "queue_eta_completion_unresolved" in result.unmet_needs[0].reason
 
 
+def test_trace_preserves_actions_resources_reasons_and_forecast_usage(api):
+    obs = queue_observation(api)
+    requests = [need("a", quantity=2, due=8), need("b", destination=3, quantity=2, due=12)]
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    plain = obj.allocate(state(api), requests, obs)
+    events = []
+    obj.trace_callback = events.append
+    traced = obj.allocate(state(api), requests[::-1], obs)
+    np.testing.assert_array_equal(plain.flows, traced.flows)
+    assert plain.unmet_needs == traced.unmet_needs
+    assert plain.resource_usage == traced.resource_usage and plain.reasons == traced.reasons
+    eta = [e for e in events if e["stage"] == "eta"]
+    assert eta and all(e["quantity"] > 0 and e["source_stock"] > 0 and e["entry_capacity"] > 0 for e in eta)
+    ranks = [e["need_rank"] for e in events]
+    assert ranks == sorted(ranks)
+
+
+def test_route_trace_separates_absent_action_slot_from_sanctions(api):
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    events = []
+    obj.trace_callback = events.append
+    obs = queue_observation(api)
+    obs["graph_now.prohibited"][3, 0] = obs["graph_now.prohibited"][6, 0] = 1
+    obs["action_mask"][[1, 4]] = 0
+    result = obj.allocate(state(api), [need("banned"), need("absent", destination=6)], obs)
+    routes = {e["need_id"]: e for e in events if e["stage"] == "route_lookup"}
+    assert routes["banned"]["reason"] == "all_delivery_slots_prohibited"
+    assert routes["banned"]["static_slots"] == [1, 4]
+    assert routes["absent"]["reason"] == "no_action_slot_to_destination"
+    assert routes["absent"]["static_slots"] == []
+    assert routes["absent"]["commodity_destinations"] == [3, 4, 5]
+    assert all(n.reason == "no_permitted_delivery_slot" for n in result.unmet_needs)
+    assert not any(e["stage"] == "eta" for e in events)
+
+
+@pytest.mark.parametrize("blocked", ["stock", "capacity", "permission", "sanction", "closure", "fleet"])
+def test_impossible_candidates_do_not_consume_forecast_budget(api, blocked):
+    obs, snapshot = queue_observation(api), state(api)
+    obs["graph_now.u"][6] = 0
+    if blocked == "stock":
+        snapshot.available_stock[0, 0] = api.c.Quantity(0, "observed")
+    elif blocked == "capacity":
+        obs["graph_now.u"][0] = 0
+    elif blocked == "permission":
+        obs["action_mask.observed"][:] = 0
+        obs["graph_now.prohibited.observed"][:] = 0
+    elif blocked == "sanction":
+        obs["graph_now.prohibited"][3, 0] = 1
+        obs["action_mask"][1] = 0
+    elif blocked == "closure":
+        obs["graph_now.open"][0] = obs["graph_now.kappa.tb"][0] = 0
+    elif blocked == "fleet":
+        api.cfg["static"]["edges"]["alt_of"][0] = {"edge": 6}
+        api.cfg["static"]["edges"]["tau0"][0] = 2
+        obs["graph_now.tau"][0] = 2
+        api.cfg["static"]["instance"]["params"]["fleet_measure"]["tb"] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+
+    def unexpected_forecast(*args, **kwargs):
+        pytest.fail(f"forecast called despite {blocked}")
+
+    obj.queue_forecaster.forecast = unexpected_forecast
+    result = obj.allocate(snapshot, [need()], obs)
+    assert not np.any(result.flows)
+    assert any("Ran 0/16" in r.message for r in result.reasons if r.code == "queue_eta_forecast_usage")
+
+
 @pytest.mark.parametrize("task", ["tiny", "small", "full"])
 def test_queue_eta_real_nominal_sea_dispatch_is_valid_and_unclipped(api, task):
     import gymnasium as gym
