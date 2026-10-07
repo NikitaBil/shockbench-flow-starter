@@ -148,6 +148,10 @@ local process CPU as official RSS or server CPU certification.
 2. Network/delivery V5.2: compare waiting for an evidenced reopening against
    existing detours. Agree the time-dependent queue interpretation with the
    state/forecast owner before adding it; no arbitrary reopening schedule.
+   Update: the prototype and availability audit are in
+   `CLOSURE_WAIT_EXPERIMENT.md`. Standard has `chi=false`, so observed end dates
+   cannot drive this policy on the leaderboard; a remaining-duration model is
+   still needed. The known-date flag stays disabled.
 3. Planner owner: terminal upstream replenishment, wafer raw requirements,
    and actual fuel consumption remain the main unresolved shortage/shed leads
    from the previous audit. This announcement experiment does not fix them.
