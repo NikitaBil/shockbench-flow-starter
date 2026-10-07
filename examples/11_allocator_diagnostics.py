@@ -38,6 +38,12 @@ def summarize(events):
     denied = [e for e in events if e["stage"] == "eta" and e["reason"] == "queue_eta_forecast_budget_exhausted"]
     assignments = [e for e in events if e["stage"] == "assignment"]
     late = [e for e in assignments if e["reason"] == "eta_late"]
+    unknown = [e for e in assignments if e.get("eta") is None or e["reason"] == "delivery_eta_unknown"]
+    # Older traces may omit ETA. An explicit known reason still establishes
+    # that the allocator reported a conditional estimate in that trace format.
+    unknown = [e for e in unknown if e["reason"] not in ("eta_late", "eta_on_time_estimate")]
+    assigned_slots = {(e["week"], e["need_id"], e["slot_id"]) for e in assignments}
+    known_count = len(assignments) - len(unknown)
     return {
         "budget_denial_records": len(denied),
         "budget_denial_unique_week_needs": len({(e["week"], e["need_id"]) for e in denied}),
@@ -52,6 +58,12 @@ def summarize(events):
         ),
         "executed_forecasts": sum(e["calls_after"] - e["calls_before"] for e in events if e["stage"] == "eta"),
         "assignment_records": len(assignments),
+        "unknown_assignment_records": len(unknown),
+        "known_assignment_records": known_count,
+        "late_fraction_among_known": len(late) / known_count if known_count else None,
+        "budget_denied_but_dispatched_unique_week_need_slots": len(
+            {(e["week"], e["need_id"], e["slot_id"]) for e in denied} & assigned_slots
+        ),
         "late_assignment_records": len(late),
         "late_already_overdue": sum(e["overdue_at_dispatch"] for e in late),
         "late_no_wait_after_deadline": sum(

@@ -437,7 +437,9 @@ def test_queue_eta_budget_is_deterministic_and_reported(api, monkeypatch):
     second = obj.allocate(state(api), requests[::-1], obs)
     np.testing.assert_array_equal(first.flows, second.flows)
     assert first.reasons == second.reasons and first.unmet_needs == second.unmet_needs
-    assert "queue_eta_forecast_budget_exhausted" in first.unmet_needs[0].reason
+    assert not first.unmet_needs and first.flows[0] == first.flows[1] == 1
+    assert any(r.code == "dispatch_without_certified_eta" for r in first.reasons)
+    assert not any(r.code == "eta_on_time_estimate" for r in first.reasons)
     assert any("Ran 1/1" in r.message for r in first.reasons if r.code == "queue_eta_forecast_usage")
 
 
@@ -446,8 +448,11 @@ def test_queue_eta_limited_horizon_is_unresolved_not_a_nominal_completion(api, m
     obs = queue_observation(api)
     obs["graph_now.u"][6] = 0
     result = api.Allocator(api.cfg, queue_eta_enabled=True).allocate(state(api), [need(due=12)], obs)
-    assert not np.any(result.flows)
-    assert "queue_eta_completion_unresolved" in result.unmet_needs[0].reason
+    assert result.flows[1] == 5 and not result.unmet_needs
+    assert any(
+        r.code == "dispatch_without_certified_eta" and "completion_unresolved" in r.message for r in result.reasons
+    )
+    assert not any(r.code == "eta_on_time_estimate" for r in result.reasons)
 
 
 def test_trace_preserves_actions_resources_reasons_and_forecast_usage(api):

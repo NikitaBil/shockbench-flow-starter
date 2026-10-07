@@ -128,6 +128,38 @@ class Allocator:
         probe = replace(option, quantity=quantity, estimated_completion_week=earliest, queue_holding_cost_per_unit=0)
         return self._candidate_key(probe, need, quantity)[0]
 
+    def _unknown_dispatch_allowed(self, option, quantity, snapshot, predictor):
+        """Computation truncation is not a physical dispatch prohibition.
+
+        This fallback never repairs hidden inputs or a known forecast conflict.
+        It requires a fully observed, open physical route and room for the
+        batch's empty-queue lower bound within the episode. ETA stays None.
+        """
+        truncation = "queue_eta_forecast_budget_exhausted" in option.delay_flags or (
+            "queue_eta_completion_unresolved" in option.delay_flags
+            and snapshot.week + predictor.MAX_WEEKS - 1 < snapshot.horizon
+        )
+        if not truncation or not predictor.inputs_complete:
+            return False
+        if predictor.rejections & {"queue_eta_inputs_unknown", "queue_eta_transit_unknown"}:
+            return False  # A prior forecast exposed missing joint inputs, not merely a CPU cutoff.
+        route, fields = self.network.routes[option.slot_id], snapshot.fields
+        es, ps = list(route.edges), list(route.chokepoint_positions)
+        status = snapshot.routes[route.slot_id]
+        if not option.permission_observed or status.closed_chokepoints or status.snapshot_throughput <= 0:
+            return False
+        if any((edge, route.commodity_id) in predictor.pending for edge in route.edges[1:]):
+            return False  # Unknown queue delay cannot certify traversal before an announced ban.
+        if not (
+            np.all(fields["graph_now.u"].observed[es])
+            and np.all(fields["graph_now.tau"].observed[es])
+            and np.all(fields["graph_now.open"].observed[ps])
+            and np.all(fields[f"graph_now.kappa.{route.pool}"].observed[ps])
+        ):
+            return False
+        batch_lower_bound = option.no_wait_arrival_week + max(0, math.ceil(quantity / status.snapshot_throughput) - 1)
+        return batch_lower_bound <= snapshot.horizon
+
     def _weight(self, edge, lane):
         return sum(delta for match, delta in self.fleet_terms.get(edge, ()) if match is None or match == lane)
 
@@ -230,7 +262,7 @@ class Allocator:
         fleet_start = {pool: max(0.0, cap - release_bound[pool]) for pool, cap in self.fleet_caps.items()}
         fleet = dict(fleet_start)
         flows = np.zeros(len(net.routes), dtype=np.float64)
-        unmet, reasons, cache = [], [], {}
+        unmet, reasons, cache, assignments = [], [], {}, []
         for need_rank, need in enumerate(sorted(needs, key=need_order_key), 1):
             key = need.destination_node, need.commodity_id
             if key not in cache:
@@ -390,10 +422,13 @@ class Allocator:
                         )
                     rank, eta = self._candidate_key(option, need, quantity)
                     if eta is None:
-                        blocked.add("delivery_eta_unknown")
-                        blocked.update(flag for flag in option.delay_flags if flag.startswith("queue_eta_"))
-                        continue
-                    if eta > state.horizon:
+                        if predictor is None or not self._unknown_dispatch_allowed(
+                            option, quantity, snapshot, predictor
+                        ):
+                            blocked.add("delivery_eta_unknown")
+                            blocked.update(flag for flag in option.delay_flags if flag.startswith("queue_eta_"))
+                            continue
+                    if eta is not None and eta > state.horizon:
                         blocked.add("estimated_arrival_beyond_horizon")
                         continue
                     candidates.append((rank, option, quantity, eta))
@@ -430,26 +465,16 @@ class Allocator:
                 edges[route.edge_id] -= qty
                 fleet[route.pool] = max(0.0, fleet[route.pool] - weight * qty)
                 remaining = max(0.0, remaining - qty)
-                self._trace(
-                    need,
-                    need_rank,
-                    state.week,
-                    route.slot_id,
-                    "assignment",
-                    "eta_late" if eta > need.due_week else "eta_on_time_estimate",
-                    quantity=qty,
-                    eta=eta,
-                    late_weeks=max(0, eta - need.due_week),
-                    overdue_at_dispatch=need.due_week < state.week,
-                    no_wait_arrival=option.no_wait_arrival_week,
-                )
+                # Emit assignment traces after the joint plan is complete so
+                # an unforecast addition cannot leave a stale on-time label.
+                assignments.append((need_rank, need, option, qty, eta))
                 if predictor is not None:
                     predictor.accept(option, qty, eta)
                 reasons.append(
                     DecisionReason(
                         "allocated_current_resources",
                         f"Assigned {qty:g} {route.unit}; full-route transport estimate "
-                        f"{option.transport_cost_per_unit:g} USD/unit; conditional ETA week {eta}, "
+                        f"{option.transport_cost_per_unit:g} USD/unit; conditional ETA {eta}, "
                         f"due week {need.due_week}; later edges/pools are not reserved.",
                         need.need_id,
                         route.slot_id,
@@ -457,8 +482,14 @@ class Allocator:
                 )
                 reasons.append(
                     DecisionReason(
-                        "eta_late" if eta > need.due_week else "eta_on_time_estimate",
-                        f"Conditional completion week {eta}; "
+                        "delivery_eta_unknown"
+                        if eta is None
+                        else "eta_late"
+                        if eta > need.due_week
+                        else "eta_on_time_estimate",
+                        "Dispatched with unknown completion; this does not establish timely coverage."
+                        if eta is None
+                        else f"Conditional completion week {eta}; "
                         + (
                             "arrives after this need's deadline."
                             if eta > need.due_week
@@ -468,6 +499,18 @@ class Allocator:
                         route.slot_id,
                     )
                 )
+                if eta is None:
+                    reasons.append(
+                        DecisionReason(
+                            "dispatch_without_certified_eta",
+                            f"Assigned {qty:g} {route.unit} after bounded forecasting was truncated: "
+                            f"{','.join(flag for flag in option.delay_flags if flag.startswith('queue_eta_'))}. "
+                            "Stock, permissions and physical route rates are observed; ETA remains unknown; "
+                            "no future queue capacity reserved.",
+                            need.need_id,
+                            route.slot_id,
+                        )
+                    )
                 if option.uncertain_fields:
                     reasons.append(
                         DecisionReason(
@@ -514,6 +557,47 @@ class Allocator:
                 )
                 unmet.append(UnmetNeed(need.need_id, remaining, reason))
                 self._trace(need, need_rank, state.week, None, "unmet", reason, quantity=remaining)
+        uncertified = predictor.uncertified_slots if predictor is not None else set()
+        if uncertified:
+            replacements = {
+                "eta_on_time_estimate": "delivery_eta_unknown",
+                "eta_late": "delivery_eta_unknown",
+                "queue_eta_estimate": "queue_eta_estimate_superseded",
+                "wait_for_announced_reopening": "closure_wait_completion_unknown",
+                "allocated_current_resources": "allocated_current_resources",
+            }
+            reasons = [
+                DecisionReason(
+                    replacements[reason.code],
+                    "Current resources assigned; final joint completion is unknown after additional unforecast "
+                    "cargo. Earlier prefix ETA is superseded, not an on-time claim or future reservation.",
+                    reason.need_id,
+                    reason.slot_id,
+                )
+                if reason.slot_id in uncertified and reason.code in replacements
+                else reason
+                for reason in reasons
+            ]
+        for rank, need, option, quantity, eta in assignments:
+            if option.slot_id in uncertified:
+                eta = None
+            self._trace(
+                need,
+                rank,
+                state.week,
+                option.slot_id,
+                "assignment",
+                "delivery_eta_unknown"
+                if eta is None
+                else "eta_late"
+                if eta > need.due_week
+                else "eta_on_time_estimate",
+                quantity=quantity,
+                eta=eta,
+                late_weeks=None if eta is None else max(0, eta - need.due_week),
+                overdue_at_dispatch=need.due_week < state.week,
+                no_wait_arrival=option.no_wait_arrival_week,
+            )
         usage = []
         for key, start in stock_start.items():
             used = start - stocks[key]

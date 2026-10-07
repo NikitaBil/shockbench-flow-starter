@@ -29,9 +29,25 @@ class CandidateETA:
         self.state, self.observation = state, observation
         self.network, self.snapshot = network, snapshot
         self.proposals, self.completions = [], {}
+        self.accepted_slots, self.uncertified_slots = set(), set()
         self.cache = {}
         self.calls = 0
         self.rejections = set()
+        self.inputs_complete = (
+            not any(issue.startswith(("pipeline:", "queue:")) for issue in state.issues)
+            and bool(np.all(ObservationReader(observation).field("stock.qty")[1]))
+            and all(
+                lot.edge_id is not None
+                and lot.edge_arrival_week is not None
+                and lot.lane_status != "unknown"
+                and lot.quantity.value is not None
+                for lot in state.pipeline
+            )
+            and all(
+                lot.lane_id is not None and lot.next_edge_id is not None and lot.quantity.value is not None
+                for lot in state.queues
+            )
+        )
         self.pending = self._pending() if announced_guard else {}
         self.closure_schedule = closure_schedule
         # Topology is static; future transit persists at observed current tau.
@@ -202,6 +218,15 @@ class CandidateETA:
         if self.network.routes[option.slot_id].chokepoints:
             proposal = self._proposal(option.slot_id, quantity)
             self.proposals.append(proposal)
-            self.completions[proposal.lot_id] = completion
+            self.accepted_slots.add(option.slot_id)
+            if completion is None:
+                # The joint plan now contains unforecast cargo. Withdraw the
+                # earlier joint completion claims rather than treating them
+                # as future queue reservations. A later evaluated candidate
+                # still includes every proposal, including these unknowns.
+                self.uncertified_slots.update(self.accepted_slots)
+                self.completions.clear()
+            else:
+                self.completions[proposal.lot_id] = completion
             # All later forecasts must include this newly selected cargo.
             self.cache.clear()

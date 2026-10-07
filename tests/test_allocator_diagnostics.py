@@ -32,6 +32,18 @@ def test_budget_records_are_not_reported_as_unique_needs():
     assert report["executed_forecasts"] == 0
 
 
+def test_unknown_assignments_are_not_counted_as_timely_improvement():
+    common = dict(week=1, need_id="n", slot_id=2, stage="assignment", due_week=3, no_wait_arrival=5)
+    report = diagnostics.summarize(
+        [
+            dict(common, reason="delivery_eta_unknown", eta=None, late_weeks=None),
+            dict(common, reason="eta_late", eta=5, late_weeks=2, overdue_at_dispatch=False),
+        ]
+    )
+    assert report["unknown_assignment_records"] == report["known_assignment_records"] == 1
+    assert report["late_fraction_among_known"] == 1.0
+
+
 def test_diagnostic_freeze_never_edits_input_params(tmp_path, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()
