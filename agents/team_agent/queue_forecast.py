@@ -10,7 +10,7 @@ import math
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 
@@ -188,8 +188,36 @@ class QueueForecaster:
                     cargo.quantity.value,
                 )
             )
+        # A source's remaining legs use the live observed edge transit times.
+        # Static tau0 is not a valid ETA when the network currently reports a
+        # changed duration. Unknown times keep completion unknown.
+        live_tau = list(network.edge_transit_weeks)
+        active_edges = set()
+        for cargo in tuple(state.pipeline) + tuple(proposed_pipeline):
+            if cargo.edge_id is not None and cargo.lane_status != "unknown":
+                active_edges.update(network.transit_progress(cargo.edge_id, cargo.lane_id).remaining_edges)
+        for cargo in state.queues:
+            if cargo.next_edge_id is not None and cargo.lane_id is not None:
+                active_edges.add(cargo.next_edge_id)
+                active_edges.update(
+                    network.transit_progress(cargo.next_edge_id, cargo.lane_id).remaining_edges
+                )
+        for edge in sorted(active_edges):
+            weeks = reader.number("graph_now.tau", edge)
+            if weeks is None or weeks != int(weeks):
+                incomplete.append(f"queue_forecast:unknown_transit_time:{edge}")
+                continue
+            live_tau[edge] = int(weeks)
         if incomplete:
             return QueueForecast((), (), MappingProxyType({key: None for key in sources}), issues=tuple(incomplete))
+        network = SimpleNamespace(
+            edge_transit_weeks=tuple(live_tau),
+            lane_edges=network.lane_edges,
+            chokepoints=network.chokepoints,
+            edge_head=network.edge_head,
+            edge_tail=network.edge_tail,
+            transit_progress=network.transit_progress,
+        )
         rates = self._rates(reader, network, sources)
         if rates is None:
             return QueueForecast(
@@ -347,3 +375,55 @@ class QueueForecaster:
                 )
             )
         return QueueForecast(tuple(arrivals), tuple(records), MappingProxyType(completion))
+
+
+def retrospective_backtest(predictions, actual_snapshots):
+    """Evaluate archived forecasts using later observations; never called by Agent.
+
+    Inputs are (origin_week, QueueForecast) pairs and later StateSnapshots.
+    Grouped cargo has no stable cross-week ID, so evaluation is aggregate by
+    (destination, commodity, arrival week). Returns JSON-ready error records.
+    Unknown actual timing is excluded, never coerced to zero.
+    """
+    actual = defaultdict(float)
+    for snapshot in actual_snapshots:
+        for arrival in snapshot.arrivals:
+            if (
+                arrival.arrival_week == snapshot.week
+                and arrival.quantity.value is not None
+                and arrival.source == "observed"
+            ):
+                actual[arrival.destination_node, arrival.commodity_id, snapshot.week] += arrival.quantity.value
+    predicted = {}
+    for origin_week, forecast in predictions:
+        for arrival in forecast.arrivals:
+            if (
+                arrival.arrival_week is not None
+                and arrival.arrival_week > origin_week
+                and arrival.quantity.value is not None
+            ):
+                key = arrival.destination_node, arrival.commodity_id, arrival.arrival_week
+                previous = predicted.get(key)
+                # Forecasts are refreshed weekly; compare the last available
+                # forecast before arrival, never sum repeated forecasts.
+                if previous is None or origin_week > previous[0]:
+                    predicted[key] = origin_week, arrival.quantity.value
+    keys = sorted(set(predicted) | set(actual))
+    return tuple(
+        {
+            "destination_node": node,
+            "commodity_id": commodity,
+            "arrival_week": week,
+            "predicted_quantity": (
+                predicted[(node, commodity, week)][1] if (node, commodity, week) in predicted else None
+            ),
+            "actual_quantity": actual.get((node, commodity, week)),
+            "absolute_error": (
+                abs(predicted[(node, commodity, week)][1] - actual[(node, commodity, week)])
+                if (node, commodity, week) in actual and (node, commodity, week) in predicted
+                else None
+            ),
+            "cargo_identity": "aggregate; grouped lots have no stable IDs",
+        }
+        for node, commodity, week in keys
+    )

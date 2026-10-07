@@ -40,8 +40,9 @@ marks чи готовий план майбутніх disruptions. Індекс�
   відбуваються пізніше. Їх не додаємо в ресурс для поточного dispatch.
 - `backlog`: усі пари `layout.demands`; приховане значення лишається unknown.
 - `pipeline`: живі поточні ребра, lane status, кількість, дата прибуття до head
-  поточного ребра, відомий кінцевий пункт. Відома пара edge/lane перевіряється
-  Вітиним `transit_progress`. Hidden lane не стає lane 0. Off-lane можна
+  поточного ребра, відомий кінцевий пункт, решта edge-ів та номінальна ETA після
+  поточного edge. Відома пара edge/lane перевіряється Вітиним `transit_progress`.
+  ETA виключає поточне ребро та очікування в чергах. Hidden lane не стає lane 0. Off-lane можна
   встановити лише на ребрі, яке не належить жодній lane і не торкається choke.
 - `queues`: Tiny padded lot list та Small/Full dense `(lot_key, cohort_week)`;
   observed mask застосовується до живих кількостей і метаданих.
@@ -87,27 +88,61 @@ Dataclass у `needs.py`: `need_id`, `destination_node`, `commodity_id`,
 
 - Sink demand — опублікований forecast, не realized demand. Грошова ставка
   береться з `static.sinks.pi`.
-- Fab input — ціль на основі поточної observed `cap_eff`; це верхня виробнича
-  ціль, а не гарантоване виробництво при дефіциті енергії.
-- OSAT inputs — observed спільна `thr_eff`, поділена між package types порівну;
-  кожен товар не отримує повну capacity окремо.
-- Grid fuels — ціль для поточної deliverable generation за public fuel shares;
-  реальне споживання може бути нижчим. Для indirect shortage costs поки `None`,
-  товарна ціна не підміняє marginal penalty.
+- Fab/OSAT inputs — лише від published downstream package forecast, обмежені
+  observed `cap_eff`/`thr_eff`; без forecast capacity не створює потребу.
+  OSAT не ділить throughput порівну. Номінальний Fab BOM використовує
+  співвідношення input/output 1:1; `w_scr` — вік обліку scrap у тижнях, а
+  `tau` — тривалість у тижнях. Жоден із них не є коефіцієнтом втрати матеріалу.
+  BOM input buffer за замовчуванням дорівнює нулю; додатковий обсяг можна
+  увімкнути окремим `SafetyBufferPolicy(input_buffer_fraction=...)`.
+  `e` та публічна fuel share задають пов'язану потребу енергії/палива.
+- Grid fuels — щотижнева потреба для static base load плюс рівномірно
+  розкладена по горизонту grounded Fab energy, обмежена поточним deliverable
+  `G_bar`, за public fuel shares. Marginal shortage cost для sink дорівнює
+  `static.sinks.pi` (USD/native unit/week). Для grid fuel формула
+  Модель indirect shortage costs вимкнена за замовчуванням параметром
+  `shortage_cost_model`. У схемі VOLL має одиниці USD/GWh, а fuel stock — GWh;
+  гранична оцінка для grid fuel дорівнює `VOLL + max(pi * R / e)` для
+  unit-сумісних шляхів до Fab та sink. `pi` — USD/output/week, `R` — безрозмірний
+  restoration factor, `e` — GWh/output, тому обидва доданки мають USD/GWh/week.
+  Fuel share обмежує segment generation, але не є коефіцієнтом перерахунку
+  fuel у generation. Для виробничих inputs `pi` поширюється лише явними BOM
+  зв'язками 1:1 з однаковими native units; невідомі одиниці дають `None`.
+  Це маржинальна оцінка втрат за припущенням лінійного виробництва, не ціна
+  товару чи відкалібрована суспільна шкода.
+- Часові потреби — forecast demand лишається розбитим за абсолютним тижнем.
+  Для package need у тиждень `D` OSAT input receipt deadline дорівнює
+  `max(current_week, D - tau_osat)`. Для Fab output, потрібного OSAT у тиждень
+  `S`, planner віднімає observed ETA найшвидшого сумісного Fab→OSAT route; Fab
+  input receipt deadline додатково віднімає `tau_fab`. Отже Fab input дедлайн
+  реалізує `D - tau_osat - ETA_fab_osat - tau_fab` з обрізанням до поточного
+  тижня. `graph_now.tau` дає live edge ETA; приховані transit times не
+  замінюються статичним `tau0`. Allocator порівнює дедлайн receipt із ETA кожної
+  доступної inbound route, а queue forecast додає спостережену чергу, коли
+  увімкнений. ETA для Fab→OSAT при back-planning не включає майбутні черги, які
+  ще не спостерігаються.
 - Grid safety stock — опціональна кінцева reserve target `ibar` після покриття
   споживання. Це не нова витрата запасу щотижня.
 
 Виробничий горизонт за замовчуванням 4 тижні; current observed targets
 переносяться на нього як явне припущення. Налаштування:
-`production_horizon`, `safety_stock`, `include_estimated_arrivals`.
+`production_horizon`, `safety_stock`, `include_estimated_arrivals` і окремий
+`safety_buffer_policy`. `safety_stock` як і раніше керує тільки grid `ibar`
+reserve; він не змінює номінальний BOM.
 Останнє за замовчуванням False: V3/WIP оцінки не приховують дефіцит автоматично.
 Arrivals з unknown датою ніколи не покривають конкретний deadline.
-При unknown stock для розрахунку заявки береться нульове lower-bound покриття,
-але сам запас не змінюється на observed zero; це записано в assumptions/issues.
+Unknown stock не стає нульовим покриттям: відповідна потреба не генерується,
+а planner додає issue. Для виробничих target unknown запас готової продукції
+або input блокує наступний крок BOM, щоб пропуск не створив зайве поповнення.
 
 `confidence=None`: калібрування імовірностей не виконано. Маска видимості,
 warning score або ступінь optimism не є готовою confidence. Hidden demand
 не замінюється вигаданим прогнозом. Пропуски доступні в `planner.last_issues`.
+
+Окремі параметричні пресети для контрольованого порівняння лежать у
+`agents/team_agent/experiments/presets.json`; це конфігурації експерименту,
+не підігнані результати. `NeedPlanner.export_examples(needs)` видає JSON-ready
+рядки з priority rank та assumptions для handoff.
 
 ## V3: Робота Перед Вантажем
 
@@ -145,6 +180,11 @@ Observed open=0 не отримує штучних 5% throughput.
   отримують скінченний ETA. Відоме повне закриття зберігається у сценарії.
 - Усі projected arrival quantity/timing мають estimated provenance,
   незалежно від того, наскільки точна формула в цьому сценарії.
+
+`retrospective_backtest(archived_predictions, later_snapshots)` є окремою
+evaluation-only функцією. Вона звіряє агрегати (destination, commodity, week),
+бо wire-групи не мають стабільних ID між тижнями. Відсутнє фактичне спостереження
+залишається `None`; ця функція не імпортується і не викликається decision loop.
 
 ## Підключення та перевірка
 

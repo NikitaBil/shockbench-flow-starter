@@ -10,7 +10,9 @@
 [ANALYTICS_V1.md](ANALYTICS_V1.md). V4 allocator тепер підключається явно через
 `allocation_enabled=true`; за замовчуванням лишається heuristic. Мережа містить
 V2/V3. Актуальний опис злиття, resource accounting і перевірок:
-[ALLOCATOR_V1.md](ALLOCATOR_V1.md). Контракт лишився початковим V1; діагностика
+[ALLOCATOR_V1.md](ALLOCATOR_V1.md). Analytics 1bfb7ff додала до PipelineLot
+optional remaining_edges/remaining_route_weeks; allocator приймає ці поля й
+заповнює їх для власних гіпотетичних відправлень. Діагностика
 detour fleet передається через наявні reasons, без нового kind resource_usage.
 
 ## Індекси та одиниці
@@ -62,7 +64,8 @@ Pipeline/queue не додаються до доступного запасу л
 Поля records у `contracts.py`:
 
 - `PipelineLot`: `lot_id`, `edge_id`, `commodity_id`, `lane_id`, `lane_status`,
-  `quantity`, `edge_arrival_week`, `destination_node`.
+  `quantity`, `edge_arrival_week`, `destination_node`, optional `remaining_edges`,
+  `remaining_route_weeks` (номінальний залишок transit без черг).
 - `QueueLot`: `lot_id`, `chokepoint_node`, `commodity_id`, `lane_id`, `lane_status`,
   `next_edge_id`, `entered_week`, `quantity`.
 - `ExpectedArrival`: `arrival_id`, `source_id`, `source_kind`, `destination_node`,
@@ -95,7 +98,9 @@ Pipeline/queue не додаються до доступного запасу л
 Парсер pipeline реалізовано в `StateBuilder`, а умовний прогноз черг V3 —
 в `QueueForecaster`. Прогноз опціональний, не читає приховане майбутнє та
 не перетворює сценарний ETA на спостережену дату. `build_pipeline()` досі
-залишається заглушкою до підключення справжнього алокатора.
+підключає справжній allocator через allocation_enabled. Оцінка черг для нових
+кандидатів доставки вмикається окремо через queue_eta_enabled:
+[QUEUE_ETA_V5.md](QUEUE_ETA_V5.md).
 
 ## DeliveryNeed: інтерфейс Маркіяна
 

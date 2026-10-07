@@ -27,7 +27,10 @@ result = allocator.allocate(state, needs, observation, network)
 `available_stock[(node, commodity)] -> Quantity`, `quantity`, `due_week`,
 `priority`, `shortage_cost_per_unit_usd`. Індекси — з config. Вихід —
 погоджений `AllocationResult`; додаткові поля/види ресурсів не вводяться.
-Контракт `contracts.py` збігається з integration на 48acf87.
+На момент аудиту контракт `contracts.py` збігався з integration на 48acf87.
+Пізніше підтягнуто командну analytics 1bfb7ff: вона додала optional
+remaining_edges/remaining_route_weeks до PipelineLot. AllocationResult
+і його види ресурсів збережені; це не самостійна зміна контракту allocator.
 
 Метод не змінює state, needs чи observation. Результати повторних викликів
 не ділять масив flows. Модулі стану/потреб і frozen baseline не змінюються.
@@ -75,6 +78,11 @@ V1 реальний evaluator знає completion прямих маршруті�
 через погоджений state/forecast handoff у наступному етапі, без вигаданих нулів.
 Unit-проби V3 і correction за обсягом є спрощеною оцінкою batching; це не
 симуляція всіх конкуруючих майбутніх потоків.
+
+Наступний opt-in етап [QUEUE_ETA_V5.md](QUEUE_ETA_V5.md) підключає існуючий
+FIFO-прогноз для повного обсягу кандидата. V1 без цього параметра збережено
+для окремого порівняння; completion із нового прогнозу не отримує повторний
+batch correction.
 
 ## Облік і діагностика
 

@@ -13,17 +13,21 @@ import numpy as np
 if __package__:
     from .contracts import AllocationResult, DecisionReason, ResourceUsage, UnmetNeed, need_order_key
     from .delivery import DeliveryEvaluator
+    from .delivery_eta import CandidateETA
     from .network import NetworkTracker, StaticNetwork
     from .queue_forecast import QueueForecaster
 else:
     from contracts import AllocationResult, DecisionReason, ResourceUsage, UnmetNeed, need_order_key
     from delivery import DeliveryEvaluator
+    from delivery_eta import CandidateETA
     from network import NetworkTracker, StaticNetwork
     from queue_forecast import QueueForecaster
 
 
 class Allocator:
-    def __init__(self, config, network=None):
+    def __init__(self, config, network=None, *, queue_eta_enabled=False):
+        if not isinstance(queue_eta_enabled, bool):
+            raise ValueError("queue_eta_enabled must be a boolean")
         self.config = config
         self.network = network if network is not None else StaticNetwork(config)
         self.tracker = NetworkTracker(config, self.network)
@@ -31,6 +35,7 @@ class Allocator:
         # Reuse the state owner's tested public-instance detour interpretation.
         fleet = QueueForecaster(config)
         self.fleet_terms, self.fleet_caps = fleet.fleet_terms, fleet.fleet_caps
+        self.queue_forecaster = QueueForecaster(config, max_weeks=CandidateETA.MAX_WEEKS) if queue_eta_enabled else None
         self.stock_indices = {tuple(pair): i for i, pair in enumerate(config["layout"]["stock_slots"])}
         self.pools = tuple(config["static"]["commodities"]["pool"])
         self.allowed = tuple(config["static"]["edges"]["K"])
@@ -54,7 +59,7 @@ class Allocator:
         # ETA is for the assigned quantity, not a nominal lower bound. The V3
         # unit probe's batch correction is conservative for current throughput.
         eta = option.estimated_completion_week
-        if eta is not None:
+        if eta is not None and option.quantity != quantity:
             eta += max(0, math.ceil(quantity / option.snapshot_throughput) - 1)
         late = None if eta is None else max(0, eta - need.due_week)
         cost = option.transport_cost_per_unit
@@ -144,6 +149,11 @@ class Allocator:
             raise ValueError("state week/horizon does not match observation/config")
         snapshot = self._snapshot(observation)
         net = self.network
+        predictor = (
+            CandidateETA(self.queue_forecaster, state, observation, net, snapshot)
+            if self.queue_forecaster is not None
+            else None
+        )
         # Unknown/estimated stock is not spent as if physically available.
         stock_start = {
             key: float(qty.value) if qty.source == "observed" and qty.value is not None else 0.0
@@ -182,9 +192,12 @@ class Allocator:
                     if quantity <= 0:
                         blocked.add("current_resources_exhausted_or_unknown")
                         continue
+                    if predictor is not None:
+                        option = predictor.evaluate(option, quantity)
                     rank, eta = self._candidate_key(option, need, quantity)
                     if eta is None:
                         blocked.add("delivery_eta_unknown")
+                        blocked.update(flag for flag in option.delay_flags if flag.startswith("queue_eta_"))
                         continue
                     if eta > state.horizon:
                         blocked.add("estimated_arrival_beyond_horizon")
@@ -201,6 +214,8 @@ class Allocator:
                 edges[route.edge_id] -= qty
                 fleet[route.pool] = max(0.0, fleet[route.pool] - weight * qty)
                 remaining = max(0.0, remaining - qty)
+                if predictor is not None:
+                    predictor.accept(option, qty, eta)
                 reasons.append(
                     DecisionReason(
                         "allocated_current_resources",
@@ -229,6 +244,17 @@ class Allocator:
                         DecisionReason(
                             "delivery_estimate_uncertain",
                             "Current capacity/price estimates or missing queue forecast make completion uncertain.",
+                            need.need_id,
+                            route.slot_id,
+                        )
+                    )
+                if "conditional_fifo_forecast" in option.delay_flags:
+                    reasons.append(
+                        DecisionReason(
+                            "queue_eta_estimate",
+                            f"Joint FIFO estimate for {qty:g} {route.unit}: completion week {eta}; "
+                            "current rates/transit persist, selected cargo is included; "
+                            "future dispatches/disruptions are unknown; no future resources reserved.",
                             need.need_id,
                             route.slot_id,
                         )
@@ -269,4 +295,13 @@ class Allocator:
                         f"Reserved up to {release_bound[pool]:g} {pool} unit-weeks for today's automatic releases.",
                     )
                 )
+        if predictor is not None:
+            reasons.append(
+                DecisionReason(
+                    "queue_eta_forecast_usage",
+                    f"Ran {predictor.calls}/{predictor.MAX_FORECASTS} joint forecasts; "
+                    f"lookahead at most {predictor.MAX_WEEKS} weeks. "
+                    + ("Rejected estimates: " + ",".join(sorted(predictor.rejections)) if predictor.rejections else ""),
+                )
+            )
         return AllocationResult(flows, tuple(unmet), tuple(usage), tuple(reasons))
