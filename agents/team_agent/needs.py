@@ -231,36 +231,50 @@ class NeedPlanner:
                 options.append(sum(transit))
         return min(options) if options else None
 
-    def _net_events(self, state, pair, events, issues):
-        """Net dated requirements against stock and eligible arrivals once."""
+    def _supply_calendar(self, state, pair, issues):
+        """Mutable dated supply, shared across every consumer of this stock."""
         stock = state.available_stock.get(pair)
         if stock is None or stock.value is None:
             issues.append(f"production:{pair}:unknown_time_phased_stock")
             return None
-        balance = stock.value
-        arrivals = sorted(
-            (
-                arrival.arrival_week,
-                arrival.quantity.value,
-            )
-            for arrival in state.arrivals
-            if (arrival.destination_node, arrival.commodity_id) == pair
-            and arrival.arrival_week is not None
-            and arrival.quantity.value is not None
-            and (
-                self.include_estimated_arrivals
-                or (arrival.source == "observed" and arrival.quantity.source == "observed")
-            )
+        return sorted(
+            [[state.week, stock.value]]
+            + [
+                [arrival.arrival_week, arrival.quantity.value]
+                for arrival in state.arrivals
+                if (arrival.destination_node, arrival.commodity_id) == pair
+                and arrival.arrival_week is not None
+                and arrival.quantity.value is not None
+                and (
+                    self.include_estimated_arrivals
+                    or (arrival.source == "observed" and arrival.quantity.source == "observed")
+                )
+            ]
         )
-        remaining, index = [], 0
+
+    @staticmethod
+    def _consume_supply(calendar, deadline, quantity):
+        remaining = quantity
+        for lot in calendar:
+            if lot[0] > deadline:
+                break
+            covered = min(lot[1], remaining)
+            lot[1] -= covered
+            remaining -= covered
+            if remaining <= 0:
+                break
+        return remaining
+
+    def _net_events(self, state, pair, events, issues):
+        """Net dated requirements against stock and eligible arrivals once."""
+        calendar = self._supply_calendar(state, pair, issues)
+        if calendar is None:
+            return None
+        remaining = []
         for due, quantity in sorted(events):
-            while index < len(arrivals) and arrivals[index][0] <= due:
-                balance += arrivals[index][1]
-                index += 1
-            covered = min(balance, quantity)
-            balance -= covered
-            if quantity - covered > 0:
-                remaining.append((due, quantity - covered))
+            missing = self._consume_supply(calendar, due, quantity)
+            if missing > 0:
+                remaining.append((due, missing))
         return remaining
 
     def _requirements(self, state, reader, issues, network=None):
@@ -364,82 +378,68 @@ class NeedPlanner:
                 raw_name = self.config["static"]["commodities"]["id"][raw_id]
                 raw_to_ship[raw_name].extend((osat_node, due, qty) for due, qty in net_raw)
 
+            fab_rows = {node: row for row, node in enumerate(self.config["layout"]["fabs"])}
             for output, demand_events in raw_to_ship.items():
-                demand_by_fab = []
-                for osat_node, due, qty in demand_events:
-                    possible = []
-                    for fab_node in self.config["layout"]["fabs"]:
-                        fab = self.profiles[fab_node]["fab"]
-                        if fab["product"] != output:
-                            continue
-                        output_id = self.commodities[output]
-                        route_eta = self._minimum_route_transit_weeks(
-                            network, reader, fab_node, osat_node, output_id
-                        )
-                        if route_eta is not None:
-                            possible.append((fab_node, route_eta))
-                    if not possible:
-                        issues.append(f"fab:{output}:unknown_route_eta_to:{osat_node}")
-                        continue
-                    # Choose the quickest observed route; the allocator then
-                    # scores every candidate route against the same receipt deadline.
-                    fab_node, route_eta = min(possible, key=lambda item: item[1])
-                    demand_by_fab.append(
-                        (fab_node, osat_node, max(state.week, due - route_eta), qty, route_eta)
-                    )
-
+                output_id = self.commodities[output]
                 fab_nodes = [
                     fab_node
                     for fab_node in self.config["layout"]["fabs"]
                     if self.profiles[fab_node]["fab"]["product"] == output
                 ]
-                ship_events = [(due, qty) for _fab, _osat, due, qty, _eta in demand_by_fab]
-                for fab_node in fab_nodes:
-                    ship_events = self._net_events(
-                        state, (fab_node, self.commodities[output]), ship_events, issues
-                    )
-                    if ship_events is None:
-                        break
-                if ship_events is None:
-                    continue
-
-                uncovered_by_date = defaultdict(float)
-                for due, qty in ship_events:
-                    uncovered_by_date[due] += qty
-                net_demand_by_fab = []
-                for fab_node, osat_node, due, _qty, route_eta in sorted(
-                    demand_by_fab, key=lambda item: (item[2], item[0], item[1])
-                ):
-                    remaining = min(_qty, uncovered_by_date[due])
-                    uncovered_by_date[due] -= remaining
-                    if remaining > 0:
-                        net_demand_by_fab.append((fab_node, osat_node, due, remaining, route_eta))
-
-                # Retain each event's receiving OSAT so route ETA and production
-                # start dates remain attached to the correct downstream demand.
-                remaining_events = list(net_demand_by_fab)
-                for fab_node in fab_nodes:
-                    if not remaining_events:
-                        break
-                    fab_row = self.config["layout"]["fabs"].index(fab_node)
-                    fab = self.profiles[fab_node]["fab"]
-                    capacity = reader.number("graph_now.fab.cap_eff", fab_row)
-                    if capacity is None:
-                        issues.append(f"fab:{fab_node}:unknown_capacity")
+                calendars, capacities, options_by_osat = {}, {}, {}
+                residual_events = []
+                # Existing output is netted first, using one ledger per Fab.
+                # Stock at an unrelated/unreachable Fab cannot cover this OSAT.
+                for osat_node, due, quantity in sorted(demand_events, key=lambda event: (event[1], event[0])):
+                    if osat_node not in options_by_osat:
+                        possible = []
+                        for fab_node in fab_nodes:
+                            route_eta = self._minimum_route_transit_weeks(
+                                network, reader, fab_node, osat_node, output_id
+                            )
+                            if route_eta is not None:
+                                possible.append((fab_node, route_eta))
+                        options_by_osat[osat_node] = sorted(possible, key=lambda option: (option[1], option[0]))
+                    options = options_by_osat[osat_node]
+                    if not options:
+                        issues.append(f"fab:{output}:unknown_route_eta_to:{osat_node}")
                         continue
-                    tau = int(fab.get("tau", 0))
-                    candidates = [entry for entry in remaining_events if entry[0] == fab_node]
-                    next_remaining = [entry for entry in remaining_events if entry[0] != fab_node]
-                    for _node, osat_node, ship_date, quantity, route_eta in candidates:
+                    remaining = quantity
+                    for fab_node, route_eta in options:
+                        if fab_node not in calendars:
+                            calendars[fab_node] = self._supply_calendar(state, (fab_node, output_id), issues)
+                        if calendars[fab_node] is not None:
+                            ship_date = max(state.week, due - route_eta)
+                            remaining = self._consume_supply(calendars[fab_node], ship_date, remaining)
+                        if remaining <= 0:
+                            break
+                    if remaining > 0:
+                        residual_events.append((osat_node, due, remaining))
+
+                # Each residual can use every reachable Fab's remaining
+                # capacity, with a source-specific transit and production date.
+                for osat_node, due, quantity in residual_events:
+                    remaining = quantity
+                    for fab_node, route_eta in options_by_osat[osat_node]:
+                        if calendars[fab_node] is None:
+                            continue
+                        fab = self.profiles[fab_node]["fab"]
+                        if fab_node not in capacities:
+                            capacities[fab_node] = reader.number("graph_now.fab.cap_eff", fab_rows[fab_node])
+                            if capacities[fab_node] is None:
+                                issues.append(f"fab:{fab_node}:unknown_capacity")
+                        capacity = capacities[fab_node]
+                        if capacity is None:
+                            continue
+                        tau = int(fab.get("tau", 0))
+                        ship_date = max(state.week, due - route_eta)
                         production_week = max(state.week, ship_date - tau)
                         capacity_left = max(0.0, capacity - fab_weekly_capacity[fab_node, production_week])
-                        target = min(capacity_left, quantity)
+                        target = min(capacity_left, remaining)
                         if target <= 0:
-                            next_remaining.append((_node, osat_node, ship_date, quantity, route_eta))
                             continue
                         fab_weekly_capacity[fab_node, production_week] += target
-                        if quantity > target:
-                            next_remaining.append((_node, osat_node, ship_date, quantity - target, route_eta))
+                        remaining -= target
                         input_name = fab["input"]
                         pair = fab_node, self.commodities[input_name]
                         nominal_inputs = _nominal_fab_inputs(target)
@@ -462,7 +462,10 @@ class NeedPlanner:
                         grid_name = fab.get("grid")
                         if grid_name:
                             grid_energy[grid_name, production_week] += energy
-                    remaining_events = next_remaining
+                        if remaining <= 0:
+                            break
+                    if remaining > 0:
+                        issues.append(f"fab:{output}:unplanned_input:{osat_node}:{due}:{remaining:g}")
         for row, node in enumerate(self.config["layout"]["grids"]):
             generation = reader.number("graph_now.grid.G_bar", row)
             if generation is None:
