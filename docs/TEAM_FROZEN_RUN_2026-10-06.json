@@ -1,0 +1,46 @@
+{
+  "provenance": "Metadata supplied by teammate through user on 2026-10-07; submissions not verified locally",
+  "frozen_root_folder": "outputs/11_team_candidate/2026-10-06_14-49-25_762846",
+  "locally_available": false,
+  "git_head_at_freeze": "48acf8768c66e001f2b57f449527ee53d7d0a8f3",
+  "git_branch_at_freeze": "integration",
+  "uncommitted_changes_at_freeze": true,
+  "checkout_alone_reproduces_submission": false,
+  "submission_sha256": {
+    "candidate": "4a9f7ad80566dc6a960ba96a6bd4e65662ced60d251db57bf1d7ee22a573af8e",
+    "baseline": "0e38a292f4df61e4cf28ff3be0f4af46907d2a64852d8fe5210e141cadbc3312"
+  },
+  "hash_kind": "Packed submission SHA-256; distinct from example 11 folder fingerprints",
+  "candidate_params": {
+    "allocation_enabled": true,
+    "queue_eta_enabled": true,
+    "queue_forecast_enabled": false,
+    "planner_options": {
+      "fuel_replenishment_enabled": true,
+      "include_estimated_arrivals": false,
+      "production_enabled": true,
+      "production_horizon": 4,
+      "safety_stock": true,
+      "shortage_cost_model": false
+    }
+  },
+  "baseline_params_file_present": false,
+  "baseline_builtin_params": {
+    "fraction": 1.0,
+    "closure_power": 1.0
+  },
+  "entropy": 67890,
+  "replay_seed": 0,
+  "diagnostic_episodes": {
+    "full": [0, 1],
+    "small_v2": [0, 1, 2, 3]
+  },
+  "score_settings": {
+    "episodes": 16,
+    "entropy": 67890,
+    "quick": false,
+    "cpu_budget": true
+  },
+  "commits_reported_absent_from_frozen_submissions": ["03c266e", "a94297b"],
+  "current_code_mismatch": "Merged current Agent does not wire planner_options, fuel_replenishment_enabled or queue_forecast_enabled. Copying these params onto current code cannot reproduce the frozen policy."
+}

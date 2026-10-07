@@ -22,8 +22,11 @@ those failures.
   copies under `outputs/11_allocator_diagnostics/`, verify their SHA-256 hashes,
   and record parameters, source paths, root and episode.
 - Root `12345`, episodes 0 and 1 are **local native evidence**. The exact
-  teammate frozen commit, params and root remain unspecified. These runs do
+  teammate frozen commit, params and root were unspecified during this audit. These runs do
   not reproduce the quoted RSS scores or the exact 3597/4082 diagnostic counts.
+  Metadata was subsequently supplied; see
+  [TEAM_FROZEN_RUN_2026-10-06.json](TEAM_FROZEN_RUN_2026-10-06.json) and
+  [the synchronization note](NETWORK_DELIVERY_SYNC_2026-10-07.md).
 
 ## Separate changes
 
