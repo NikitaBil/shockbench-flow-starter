@@ -102,7 +102,9 @@ class StateBuilder:
                         remaining_times = []
                         break
                     remaining_times.append(int(transit))
-            remaining_weeks = sum(remaining_times) if len(remaining_times) == len(remaining_edges) else None
+            remaining_weeks = (
+                sum(remaining_times) if progress is not None and len(remaining_times) == len(remaining_edges) else None
+            )
             lot_id = f"pipeline:{edge}:{commodity}:{status}:{lane}:{due}:{row}"
             qty = reader.quantity("pipeline.qty", row)
             pipeline.append(
@@ -114,10 +116,14 @@ class StateBuilder:
                 issues.append(f"{lot_id}:incomplete_route_or_time")
             if destination is not None:
                 final_week = due if progress.reaches_destination else None
-                final_source = "observed" if progress.reaches_destination else "unknown"
-                if final_week is None and remaining_weeks is not None and not any(
-                    network.edge_tail[remaining_edge] in network.chokepoints
-                    for remaining_edge in remaining_edges
+                final_source = "observed" if final_week is not None else "unknown"
+                if (
+                    due is not None
+                    and final_week is None
+                    and remaining_weeks is not None
+                    and not any(
+                        network.edge_tail[remaining_edge] in network.chokepoints for remaining_edge in remaining_edges
+                    )
                 ):
                     final_week = due + remaining_weeks
                     final_source = "estimated"
