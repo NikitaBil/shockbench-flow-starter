@@ -543,6 +543,48 @@ def test_hidden_transit_beyond_episode_remains_unknown(api):
     assert not any(r.code == "eta_on_time_estimate" for r in result.reasons)
 
 
+def test_limited_budget_forecasts_potentially_timely_route_before_cheaper_late_route(api, monkeypatch):
+    monkeypatch.setattr(importlib.import_module("delivery_eta").CandidateETA, "MAX_FORECASTS", 1)
+    api.cfg["static"]["edges"]["head"][2] = 4  # Both lanes now reach the requested recipient.
+    api.cfg["static"]["edges"]["c0"][2] = 30
+    obs = queue_observation(api)
+    obs["graph_now.u"][6] = 0
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    events = []
+    obj.trace_callback = events.append
+    first = obj.allocate(state(api), [need(quantity=1, due=5)], obs)
+    second = obj.allocate(state(api), [need(quantity=1, due=5)], obs)
+    assert first.flows[0] == 1 and first.flows[1] == 0
+    np.testing.assert_array_equal(first.flows, second.flows)
+    assert first.reasons == second.reasons
+    eta = [e for e in events if e["stage"] == "eta"]
+    assert [e["slot_id"] for e in eta[:2]] == [0, 1]
+    assert eta[0]["calls_after"] == 1 and eta[0]["eta"] == 5
+    assert eta[1]["reason"] == "queue_eta_forecast_budget_exhausted" and eta[1]["eta"] is None
+    assert any(r.code == "eta_on_time_estimate" for r in first.reasons)
+
+
+def test_forecast_budget_follows_priority_deadline_then_stable_id(api, monkeypatch):
+    monkeypatch.setattr(importlib.import_module("delivery_eta").CandidateETA, "MAX_FORECASTS", 1)
+    obs = queue_observation(api)
+    obs["graph_now.u"][6] = 0
+    requests = [need("z", destination=3, quantity=1, priority=4, due=12), need("a", quantity=1, priority=1, due=2)]
+    obj = api.Allocator(api.cfg, queue_eta_enabled=True)
+    events = []
+    obj.trace_callback = events.append
+    result = obj.allocate(state(api), requests, obs)
+    assert next(e for e in events if e["stage"] == "eta")["need_id"] == "z"
+    assert result.flows[0] == 1
+    events.clear()
+    requests = [need("z", quantity=1, due=12), need("a", destination=3, quantity=1, due=8)]
+    obj.allocate(state(api), requests, obs)
+    assert next(e for e in events if e["stage"] == "eta")["need_id"] == "a"
+    events.clear()
+    requests = [need("z", quantity=1, due=8), need("a", destination=3, quantity=1, due=8)]
+    obj.allocate(state(api), requests, obs)
+    assert next(e for e in events if e["stage"] == "eta")["need_id"] == "a"
+
+
 @pytest.mark.parametrize("task", ["tiny", "small", "full"])
 def test_queue_eta_real_nominal_sea_dispatch_is_valid_and_unclipped(api, task):
     import gymnasium as gym

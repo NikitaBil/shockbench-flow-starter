@@ -213,9 +213,23 @@ class Allocator:
                 )
             remaining = float(need.quantity)
             blocked = set()
+            options = cache[key]
+            if predictor is not None:
+                # Forecast scheduling only: routes that can still meet the
+                # deadline without queue delay go first. This lower bound is
+                # never promoted to a known/on-time completion estimate.
+                options = sorted(
+                    options,
+                    key=lambda option: (
+                        int(option.no_wait_arrival_week > need.due_week),
+                        option.transport_cost_per_unit,
+                        option.no_wait_arrival_week,
+                        option.slot_id,
+                    ),
+                )
             while remaining > 0:
                 candidates = []
-                for option in cache[key]:
+                for option in options:
                     route = net.routes[option.slot_id]
                     origin = route.source_node, route.commodity_id
                     status = snapshot.routes[route.slot_id]
