@@ -1,0 +1,125 @@
+{
+  "experiment_commit": "76b2f839253f661e975cc2bebd5ac18fd95565ad",
+  "parent_commit": "58d21284a6cb46c64e498d9fe231eb5bf746f7d7",
+  "branch": "network-delivery",
+  "kind": "native_one_change_ablation_not_rss",
+  "entropy": 67890,
+  "replay_seed": 0,
+  "policy": "synchronized current NeedPlanner defaults; allocator and queue ETA enabled",
+  "only_experimental_parameter_difference": "announced_eta_guard_enabled false -> true",
+  "expected_original_frozen_submissions_verified": false,
+  "forecast_budget": 16,
+  "forecast_lookahead_weeks": 24,
+  "initialization_in_week_one": true,
+  "test_results": {
+    "full_suite": {
+      "passed": 265,
+      "failed": 13,
+      "skipped": 7,
+      "failures": "12 Unix fcntl dependency failures; 1 Windows chmod0600 assertion"
+    },
+    "new_experiment_tests_passed": 19,
+    "ruff": "passed",
+    "sbf_check": "archive/import checks passed; isolated run fails at import fcntl"
+  },
+  "comparisons": [
+    {
+      "task": "small",
+      "episode": 0,
+      "complete_episode_before": true,
+      "complete_episode_after": true,
+      "weeks": 52,
+      "cost_usd_before": 5061382976051.7,
+      "cost_usd_after": 5061382976051.7,
+      "cost_delta_usd": 0.0,
+      "max_cpu_s_before": 0.3125,
+      "max_cpu_s_after": 0.3125,
+      "changed_action_weeks": [],
+      "announced_conflict_weeks": [],
+      "source_folder_hash": "0af8e07beda06c83bbf40d5c35e602a7922e23faa645d3bc88d4f34a1b9e6ca0",
+      "frozen_folder_hashes": {
+        "before": "54d6cf0b344ab4fd5b097e7bcd2eea6d186c8be592da10ed087e6015464b8aa3",
+        "after": "c84bdd3e4e8f1d08783c5b9c841d5b37123b65c0a537389061f5599e437f7d7c"
+      },
+      "local_report": "outputs\\12_announced_eta_guard\\small_67890_e0\\report.json"
+    },
+    {
+      "task": "full",
+      "episode": 0,
+      "complete_episode_before": true,
+      "complete_episode_after": true,
+      "weeks": 104,
+      "cost_usd_before": 15378353408753.03,
+      "cost_usd_after": 15378353408753.03,
+      "cost_delta_usd": 0.0,
+      "max_cpu_s_before": 0.890625,
+      "max_cpu_s_after": 1.0,
+      "changed_action_weeks": [],
+      "announced_conflict_weeks": [],
+      "source_folder_hash": "0af8e07beda06c83bbf40d5c35e602a7922e23faa645d3bc88d4f34a1b9e6ca0",
+      "frozen_folder_hashes": {
+        "before": "54d6cf0b344ab4fd5b097e7bcd2eea6d186c8be592da10ed087e6015464b8aa3",
+        "after": "c84bdd3e4e8f1d08783c5b9c841d5b37123b65c0a537389061f5599e437f7d7c"
+      },
+      "local_report": "outputs\\12_announced_eta_guard\\full_67890_e0_e1\\report.json"
+    },
+    {
+      "task": "full",
+      "episode": 1,
+      "complete_episode_before": true,
+      "complete_episode_after": true,
+      "weeks": 104,
+      "cost_usd_before": 14441462050782.08,
+      "cost_usd_after": 14441462050782.08,
+      "cost_delta_usd": 0.0,
+      "max_cpu_s_before": 0.4375,
+      "max_cpu_s_after": 0.484375,
+      "changed_action_weeks": [],
+      "announced_conflict_weeks": [],
+      "source_folder_hash": "0af8e07beda06c83bbf40d5c35e602a7922e23faa645d3bc88d4f34a1b9e6ca0",
+      "frozen_folder_hashes": {
+        "before": "54d6cf0b344ab4fd5b097e7bcd2eea6d186c8be592da10ed087e6015464b8aa3",
+        "after": "c84bdd3e4e8f1d08783c5b9c841d5b37123b65c0a537389061f5599e437f7d7c"
+      },
+      "local_report": "outputs\\12_announced_eta_guard\\full_67890_e0_e1\\report.json"
+    }
+  ],
+  "decision": "keep disabled; tested trajectories have identical actions and costs; no RSS improvement established",
+  "announcement_feed_exposure": [
+    {
+      "task": "small",
+      "episode": 0,
+      "weeks_with_observed_pending_rows": [
+        45,
+        46,
+        47,
+        48,
+        49
+      ],
+      "observed_pending_row_records": 5,
+      "max_pending_rows": 1
+    },
+    {
+      "task": "full",
+      "episode": 0,
+      "weeks_with_observed_pending_rows": [],
+      "observed_pending_row_records": 0,
+      "max_pending_rows": 0
+    },
+    {
+      "task": "full",
+      "episode": 1,
+      "weeks_with_observed_pending_rows": [
+        3,
+        4,
+        5,
+        11,
+        12,
+        13,
+        14
+      ],
+      "observed_pending_row_records": 11,
+      "max_pending_rows": 2
+    }
+  ]
+}
