@@ -6,6 +6,7 @@ stock; same-week ordinary arrivals, supply and production are unavailable.
 
 import math
 from collections import defaultdict
+from dataclasses import replace
 
 import numpy as np
 
@@ -113,6 +114,19 @@ class Allocator:
             -quantity,
             option.slot_id,
         ), eta
+
+    def _optimistic_key(self, option, need, quantity, snapshot):
+        """A ranking bound, never a completion forecast or an empty queue.
+
+        With observed transit, queueing cannot beat no-wait arrival under the
+        predictor's persistence model. With hidden transit use this week as
+        an optimistic bound. Holding and extra queue delay cannot be negative.
+        """
+        route = self.network.routes[option.slot_id]
+        transit_seen = np.all(snapshot.fields["graph_now.tau"].observed[list(route.edges)])
+        earliest = option.no_wait_arrival_week if transit_seen else snapshot.week
+        probe = replace(option, quantity=quantity, estimated_completion_week=earliest, queue_holding_cost_per_unit=0)
+        return self._candidate_key(probe, need, quantity)[0]
 
     def _weight(self, edge, lane):
         return sum(delta for match, delta in self.fleet_terms.get(edge, ()) if match is None or match == lane)
@@ -317,6 +331,18 @@ class Allocator:
                         )
                         continue
                     if predictor is not None:
+                        # Branch-and-bound: once a feasible option is known,
+                        # spend no FIFO simulation on an alternative whose
+                        # optimistic rank cannot improve it. Quantity and slot
+                        # tie-breaks are included; each ledger change rebuilds
+                        # the bound. Priority across needs remains unchanged.
+                        if candidates and self._optimistic_key(option, need, quantity, snapshot) >= min(
+                            candidate[0] for candidate in candidates
+                        ):
+                            self._trace(
+                                need, need_rank, state.week, route.slot_id, "prefilter", "dominated_delivery_candidate"
+                            )
+                            continue
                         # Even an empty FIFO queue cannot beat observed transit
                         # under the same persistence assumptions as the forecast.
                         # Hidden transit is not a known lower bound.

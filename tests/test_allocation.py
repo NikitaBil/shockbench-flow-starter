@@ -562,9 +562,10 @@ def test_limited_budget_forecasts_potentially_timely_route_before_cheaper_late_r
     np.testing.assert_array_equal(first.flows, second.flows)
     assert first.reasons == second.reasons
     eta = [e for e in events if e["stage"] == "eta"]
-    assert [e["slot_id"] for e in eta[:2]] == [0, 1]
+    assert [e["slot_id"] for e in eta] == [0, 0]
     assert eta[0]["calls_after"] == 1 and eta[0]["eta"] == 5
-    assert eta[1]["reason"] == "queue_eta_forecast_budget_exhausted" and eta[1]["eta"] is None
+    assert len(eta) == 2  # One FIFO call per repeated allocation, no dominated late-route forecast.
+    assert any(e["reason"] == "dominated_delivery_candidate" and e["slot_id"] == 1 for e in events)
     assert any(r.code == "eta_on_time_estimate" for r in first.reasons)
 
 
