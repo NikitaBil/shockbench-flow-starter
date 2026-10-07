@@ -32,10 +32,21 @@ class Agent:
         queue_eta = PARAMS.get("queue_eta_enabled", False)
         if not isinstance(queue_eta, bool):
             raise ValueError("queue_eta_enabled must be a boolean")
+        announced_guard = PARAMS.get("announced_eta_guard_enabled", False)
+        if not isinstance(announced_guard, bool):
+            raise ValueError("announced_eta_guard_enabled must be a boolean")
+        if announced_guard and not (enabled and queue_eta):
+            raise ValueError("announced_eta_guard_enabled requires allocation_enabled and queue_eta_enabled")
         self.pipeline = (
             pipeline
             if pipeline is not None
-            else build_pipeline(config, self.network, enabled=enabled, queue_eta_enabled=queue_eta)
+            else build_pipeline(
+                config,
+                self.network,
+                enabled=enabled,
+                queue_eta_enabled=queue_eta,
+                announced_eta_guard_enabled=announced_guard,
+            )
         )
         self.last_allocation = None
         self.cap = np.array(

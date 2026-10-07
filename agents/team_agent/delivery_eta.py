@@ -12,15 +12,17 @@ import numpy as np
 
 if __package__:
     from .contracts import PipelineLot, Quantity
+    from .observations import ObservationReader
 else:
     from contracts import PipelineLot, Quantity
+    from observations import ObservationReader
 
 
 class CandidateETA:
     MAX_FORECASTS = 16
     MAX_WEEKS = 24
 
-    def __init__(self, forecaster, state, observation, network, snapshot):
+    def __init__(self, forecaster, state, observation, network, snapshot, *, announced_guard=False):
         self.forecaster = forecaster
         self.state, self.observation = state, observation
         self.network, self.snapshot = network, snapshot
@@ -28,6 +30,7 @@ class CandidateETA:
         self.cache = {}
         self.calls = 0
         self.rejections = set()
+        self.pending = self._pending() if announced_guard else {}
         # Topology is static; future transit persists at observed current tau.
         self.forecast_network = SimpleNamespace(
             edge_transit_weeks=tuple(int(tau) for tau in snapshot.fields["graph_now.tau"].values),
@@ -37,6 +40,62 @@ class CandidateETA:
             edge_tail=network.edge_tail,
             transit_progress=network.transit_progress,
         )
+
+    def _pending(self):
+        # This is a noisy publication feed, not privileged future graph data.
+        # Padding or a masked member never establishes a prohibition.
+        fields = tuple(f"pending_prohibitions.{name}" for name in ("edge", "k", "effective_week"))
+        if any(name not in self.observation for name in fields):
+            return {}
+        reader = ObservationReader(self.observation)
+        columns = [reader.field(name) for name in fields]
+        if any(values.ndim != 1 or values.shape != columns[0][0].shape for values, _ in columns):
+            raise ValueError("pending_prohibitions: inconsistent column shapes")
+        visible = np.logical_and.reduce([seen for _, seen in columns])
+        pending = {}
+        for row in np.flatnonzero(visible):
+            edge = reader.integer(fields[0], row, high=len(self.network.edge_names) - 1)
+            commodity = reader.integer(fields[1], row, high=len(self.network.commodity_names) - 1)
+            effective = reader.integer(fields[2], row, low=1)
+            if self.state.week < effective <= self.state.horizon:
+                key = edge, commodity
+                pending[key] = min(effective, pending.get(key, effective))
+        return pending
+
+    def _earliest_conflict(self, route):
+        entry = self.state.week
+        transit = self.snapshot.fields["graph_now.tau"]
+        for edge in route.edges:
+            if entry >= self.pending.get((edge, route.commodity_id), float("inf")):
+                return True
+            if not transit.observed[edge]:
+                return False  # An estimated duration cannot prove the conflict.
+            entry += int(transit.values[edge])
+        return False
+
+    def _forecast_conflict(self, forecast, proposal):
+        sources = {
+            cargo.lot_id: (cargo.lane_id, cargo.commodity_id)
+            for cargo in (*self.state.pipeline, *self.state.queues, *self.proposals, proposal)
+        }
+        for visit in forecast.visits:
+            lane, commodity = sources[visit.source_id]
+            path = self.network.lane_edges[lane]
+            edge = next(edge for edge in path if self.network.edge_tail[edge] == visit.chokepoint_node)
+            effective = self.pending.get((edge, commodity))
+            if effective is not None and (
+                (visit.first_release_week is not None and visit.first_release_week >= effective)
+                or (visit.completion_release_week is not None and visit.completion_release_week >= effective)
+                or (
+                    visit.first_release_week is not None
+                    and visit.completion_release_week is None
+                    and effective <= min(self.state.horizon, self.state.week + self.MAX_WEEKS - 1)
+                )
+            ):
+                # Checking all competing cargo matters: its invalid releases
+                # can change the proposed cargo's FIFO share as well.
+                return True
+        return False
 
     def _proposal(self, slot, quantity):
         route = self.network.routes[slot]
@@ -61,7 +120,9 @@ class CandidateETA:
         if key in self.cache:
             return self.cache[key]
         reason, eta = None, None
-        if self.calls >= self.MAX_FORECASTS:
+        if self.pending and self._earliest_conflict(route):
+            reason = "queue_eta_announced_prohibition_conflict"
+        elif self.calls >= self.MAX_FORECASTS:
             reason = "queue_eta_forecast_budget_exhausted"
         else:
             # Every future leg in the joint forecast needs known transit.
@@ -82,6 +143,9 @@ class CandidateETA:
                 eta = forecast.completion_weeks.get(proposal.lot_id)
                 if forecast.issues:
                     reason = "queue_eta_inputs_unknown"
+                    eta = None
+                elif self.pending and self._forecast_conflict(forecast, proposal):
+                    reason = "queue_eta_announced_prohibition_conflict"
                     eta = None
                 elif eta is None:
                     reason = "queue_eta_completion_unresolved"

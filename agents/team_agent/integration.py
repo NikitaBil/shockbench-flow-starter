@@ -196,7 +196,7 @@ class DecisionPipeline:
         return result
 
 
-def build_pipeline(config, network, *, enabled=False, queue_eta_enabled=False):
+def build_pipeline(config, network, *, enabled=False, queue_eta_enabled=False, announced_eta_guard_enabled=False):
     """V4 is explicit opt-in until paired evaluation supports promotion."""
     if not enabled:
         return None
@@ -205,5 +205,12 @@ def build_pipeline(config, network, *, enabled=False, queue_eta_enabled=False):
     from state import StateBuilder
 
     return DecisionPipeline(
-        StateBuilder(config), NeedPlanner(config), Allocator(config, network, queue_eta_enabled=queue_eta_enabled)
+        StateBuilder(config),
+        NeedPlanner(config),
+        Allocator(
+            config,
+            network,
+            queue_eta_enabled=queue_eta_enabled,
+            announced_eta_guard_enabled=announced_eta_guard_enabled,
+        ),
     )

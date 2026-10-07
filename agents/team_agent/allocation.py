@@ -25,9 +25,14 @@ else:
 
 
 class Allocator:
-    def __init__(self, config, network=None, *, queue_eta_enabled=False):
+    def __init__(self, config, network=None, *, queue_eta_enabled=False, announced_eta_guard_enabled=False):
         if not isinstance(queue_eta_enabled, bool):
             raise ValueError("queue_eta_enabled must be a boolean")
+        if not isinstance(announced_eta_guard_enabled, bool):
+            raise ValueError("announced_eta_guard_enabled must be a boolean")
+        if announced_eta_guard_enabled and not queue_eta_enabled:
+            raise ValueError("announced_eta_guard_enabled requires queue_eta_enabled")
+        self.announced_eta_guard_enabled = announced_eta_guard_enabled
         self.config = config
         self.network = network if network is not None else StaticNetwork(config)
         self.tracker = NetworkTracker(config, self.network)
@@ -171,7 +176,14 @@ class Allocator:
         snapshot = self._snapshot(observation)
         net = self.network
         predictor = (
-            CandidateETA(self.queue_forecaster, state, observation, net, snapshot)
+            CandidateETA(
+                self.queue_forecaster,
+                state,
+                observation,
+                net,
+                snapshot,
+                announced_guard=self.announced_eta_guard_enabled,
+            )
             if self.queue_forecaster is not None
             else None
         )
