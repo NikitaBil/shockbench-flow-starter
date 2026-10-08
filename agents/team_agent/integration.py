@@ -204,6 +204,7 @@ def build_pipeline(
     queue_eta_enabled=False,
     announced_eta_guard_enabled=False,
     closure_wait_enabled=False,
+    planner_options=None,
 ):
     """V4 is explicit opt-in until paired evaluation supports promotion."""
     if not enabled:
@@ -214,7 +215,7 @@ def build_pipeline(
 
     return DecisionPipeline(
         StateBuilder(config),
-        NeedPlanner(config),
+        NeedPlanner(config, **(planner_options or {})),
         Allocator(
             config,
             network,

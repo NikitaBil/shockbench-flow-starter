@@ -70,9 +70,14 @@ class NeedPlanner:
         safety_buffer_policy: SafetyBufferPolicy | None = None,
         production_enabled=True,
         shortage_cost_model=False,
+        fuel_replenishment_enabled=False,
     ):
         if not isinstance(production_horizon, int) or isinstance(production_horizon, bool) or production_horizon < 1:
             raise ValueError("production_horizon must be a positive integer")
+        for name, value in (("include_estimated_arrivals", include_estimated_arrivals),
+                            ("safety_stock", safety_stock), ("production_enabled", production_enabled)):
+            if not isinstance(value, bool):
+                raise ValueError(f"{name} must be a boolean")
         self.config = config
         self.production_horizon = production_horizon
         self.include_estimated_arrivals = include_estimated_arrivals
@@ -82,6 +87,9 @@ class NeedPlanner:
         if not isinstance(shortage_cost_model, bool):
             raise ValueError("shortage_cost_model must be a boolean")
         self.shortage_cost_model = bool(shortage_cost_model)
+        if not isinstance(fuel_replenishment_enabled, bool):
+            raise ValueError("fuel_replenishment_enabled must be a boolean")
+        self.fuel_replenishment_enabled = fuel_replenishment_enabled
         static = config["static"]
         self.commodities = {name: i for i, name in enumerate(static["commodities"]["id"])}
         self.nodes = {name: i for i, name in enumerate(static["nodes"]["id"])}
@@ -90,6 +98,7 @@ class NeedPlanner:
         self.penalties = {(n, k): float(pi) for n, k, pi in zip(sinks["node"], sinks["k"], sinks["pi"], strict=True)}
         self._backlog_since = {}
         self.last_issues = ()
+        self.last_trace = ()
 
     def _downstream_penalty(self, output_name):
         """Return max reachable sink penalty through the declared 1:1 BOM.
@@ -301,6 +310,32 @@ class NeedPlanner:
                         )
                     )
         count = min(self.production_horizon, state.horizon - state.week + 1)
+        fuel_count = count
+        if self.fuel_replenishment_enabled and network is not None:
+            source_leads, transfer_leads = [], []
+            node_types = self.config["static"]["nodes"]["type"]
+            for route in network.routes:
+                commodity_name = self.config["static"]["commodities"]["id"][route.commodity_id]
+                if commodity_name not in {"lng", "crude"}:
+                    continue
+                edge_times = [reader.number("graph_now.tau", edge) for edge in route.edges]
+                if all(value is not None and value == int(value) for value in edge_times):
+                    transit = sum(int(value) for value in edge_times)
+                    if (
+                        "terminal" in self.profiles[route.destination_node]
+                        and node_types[route.source_node] == "source"
+                    ):
+                        source_leads.append(transit)
+                    if (
+                        "terminal" in self.profiles[route.source_node]
+                        and node_types[route.destination_node] == "grid"
+                    ):
+                        transfer_leads.append(transit)
+            if source_leads:
+                fuel_count = min(
+                    state.horizon - state.week + 1,
+                    max(count, max(source_leads) + max(transfer_leads, default=0) + 1),
+                )
         grid_energy = defaultdict(float)
         # Translate only published downstream package demand into upstream
         # production inputs. No capacity becomes a target by itself.
@@ -477,7 +512,7 @@ class NeedPlanner:
                 if name not in self.commodities:
                     continue
                 pair = node, self.commodities[name]
-                for h in range(count):
+                for h in range(fuel_count):
                     due_week = state.week + h
                     planned_generation = min(
                         generation,
@@ -539,6 +574,7 @@ class NeedPlanner:
                 )
             )
         result = []
+        trace = []
         need_id_counts = defaultdict(int)
         for pair, requests in sorted(requirements.items()):
             stock = state.available_stock.get(pair)
@@ -553,6 +589,8 @@ class NeedPlanner:
                 # manufacture a replenishment order from missing information.
                 continue
             balance = stock.value
+            current_remaining = stock.value
+            wip_credited = 0.0
             last_week = state.week - 1
             for due, qty, priority, reason, cost, basis in sorted(
                 requests, key=lambda item: (item[0], -item[2], item[3])
@@ -564,6 +602,19 @@ class NeedPlanner:
                 covered = min(balance, qty)
                 balance -= covered
                 missing = qty - covered
+                current_credit = min(current_remaining, covered)
+                current_remaining -= current_credit
+                arrival_credit = covered - current_credit
+                eligible_wip = sum(
+                    arrival.quantity.value for arrival in state.arrivals
+                    if (arrival.destination_node, arrival.commodity_id) == pair
+                    and arrival.source_kind == "wip" and arrival.arrival_week is not None
+                    and arrival.arrival_week <= coverage_week and arrival.quantity.value is not None
+                    and (self.include_estimated_arrivals or
+                         (arrival.source == "observed" and arrival.quantity.source == "observed"))
+                )
+                wip_credit = min(arrival_credit, max(0.0, eligible_wip - wip_credited))
+                wip_credited += wip_credit
                 if missing > 0:
                     base_id = f"{reason}:{pair[0]}:{pair[1]}:{due}"
                     occurrence = need_id_counts[base_id]
@@ -580,6 +631,16 @@ class NeedPlanner:
                             assumptions=assumptions + basis,
                         )
                     )
+                    trace.append({
+                        "week": state.week, "node": pair[0], "commodity": pair[1],
+                        "raw_projected_requirement": qty, "current_inventory_credited": current_credit,
+                        "future_arrivals_credited": arrival_credit, "wip_credited": wip_credit,
+                        "safety_stock_requirement": 0.0, "final_uncovered_quantity": missing,
+                        "required_receipt_week": due, "minimum_route_lead_time_bound": None,
+                        "latest_feasible_dispatch_week": None, "emitted_quantity": missing,
+                        "due_week": due, "priority": priority, "shortage_value": cost,
+                        "reason": reason, "need_id": result[-1].need_id,
+                    })
             if self.safety_stock and "grid" in self.profiles[pair[0]]:
                 name = self.config["static"]["commodities"]["id"][pair[1]]
                 target = float(self.profiles[pair[0]]["grid"].get("ibar", {}).get(name, 0.0))
@@ -598,6 +659,139 @@ class NeedPlanner:
                             assumptions=assumptions + ("static grid ibar reserve target",),
                         )
                     )
+                    trace.append({
+                        "week": state.week, "node": pair[0], "commodity": pair[1],
+                        "raw_projected_requirement": target, "current_inventory_credited": balance,
+                        "future_arrivals_credited": 0.0, "wip_credited": 0.0,
+                        "safety_stock_requirement": target, "final_uncovered_quantity": missing,
+                        "required_receipt_week": due, "minimum_route_lead_time_bound": None,
+                        "latest_feasible_dispatch_week": None, "emitted_quantity": missing,
+                        "due_week": due, "priority": 1.0, "shortage_value": None,
+                        "reason": "safety_stock", "need_id": result[-1].need_id,
+                    })
+        # A grid-to-terminal need is a distinct upstream stage. It is created
+        # only for an uncovered projected grid-fuel need, then netted against
+        # terminal stock and dated arrivals once. Coupling slots with no
+        # terminal source route (e.g. direct nuclear-fuel grids) are excluded.
+        if self.fuel_replenishment_enabled and network is not None:
+            fuel_events = defaultdict(list)
+            for need in result:
+                if need.reason != "grid_fuel":
+                    continue
+                terminal_options = {}
+                for slot in network.slots_to.get((need.destination_node, need.commodity_id), ()):
+                    route = network.routes[slot]
+                    if "terminal" not in self.profiles[route.source_node]:
+                        continue
+                    if not network.slots_from.get((route.source_node, need.commodity_id)):
+                        continue
+                    edge_times = [reader.number("graph_now.tau", edge) for edge in route.edges]
+                    transfer = (
+                        sum(int(value) for value in edge_times)
+                        if all(value is not None and value == int(value) for value in edge_times)
+                        else float("inf")
+                    )
+                    terminal_options[route.source_node] = min(
+                        transfer, terminal_options.get(route.source_node, float("inf"))
+                    )
+                if terminal_options:
+                    terminal = min(terminal_options, key=lambda node: (terminal_options[node], node))
+                    transfer = terminal_options[terminal]
+                    terminal_due = need.due_week - int(transfer) if transfer != float("inf") else need.due_week
+                    fuel_events[terminal, need.commodity_id].append(
+                        (terminal_due, need.quantity, need, need.due_week)
+                    )
+            for pair, events in sorted(fuel_events.items()):
+                stock = state.available_stock.get(pair)
+                if stock is None or stock.value is None:
+                    issues.append(f"production:{pair}:unknown_time_phased_stock")
+                    continue
+                calendar = [[state.week, stock.value, "current"]]
+                calendar.extend(
+                    [arrival.arrival_week, arrival.quantity.value,
+                     "wip" if arrival.source_kind == "wip" else "future"]
+                    for arrival in state.arrivals
+                    if (arrival.destination_node, arrival.commodity_id) == pair
+                    and arrival.arrival_week is not None and arrival.quantity.value is not None
+                    and (self.include_estimated_arrivals or
+                         (arrival.source == "observed" and arrival.quantity.source == "observed"))
+                )
+                calendar.sort(key=lambda lot: lot[0])
+                coverage_by_need = {}
+                for due, qty, grid_need, _grid_due in sorted(events, key=lambda item: (item[0], item[1])):
+                    left = qty
+                    current_credit = future_credit = wip_credit = 0.0
+                    for lot in calendar:
+                        if lot[0] > due:
+                            break
+                        used = min(lot[1], left)
+                        lot[1] -= used
+                        left -= used
+                        if lot[2] == "current":
+                            current_credit += used
+                        elif lot[2] == "wip":
+                            wip_credit += used
+                        else:
+                            future_credit += used
+                        if left <= 0:
+                            break
+                    coverage_by_need[grid_need.need_id] = (left, current_credit, future_credit, wip_credit)
+                fuel_need_counts = defaultdict(int)
+                for due, qty, grid_need, _grid_due in events:
+                    missing, current_credit, future_credit, wip_credit = coverage_by_need[grid_need.need_id]
+                    if missing <= 0:
+                        continue
+                    slots = network.slots_from.get(pair, ())
+                    lead_times = [
+                        sum(reader.number("graph_now.tau", edge) for edge in network.routes[s].edges)
+                        for s in slots
+                        if all(
+                            reader.number("graph_now.tau", edge) is not None
+                            and reader.number("graph_now.tau", edge) == int(reader.number("graph_now.tau", edge))
+                            for edge in network.routes[s].edges
+                        )
+                    ]
+                    lead = min(lead_times) if lead_times else None
+                    base_id = f"fuel_replenishment:{pair[0]}:{pair[1]}:{due}"
+                    occurrence = fuel_need_counts[base_id]
+                    fuel_need_counts[base_id] += 1
+                    result.append(DeliveryNeed(
+                        base_id if occurrence == 0 else f"{base_id}:{occurrence + 1}", *pair, missing, due,
+                        grid_need.priority, "fuel_replenishment",
+                        grid_need.shortage_cost_per_unit_usd,
+                        assumptions=(f"upstream coverage for {grid_need.need_id}",
+                                     "terminal stock and dated arrivals netted once",
+                                     "deadline is terminal receipt week; grid coupling is a separate action"),
+                    ))
+                    trace.append({
+                        "week": state.week, "node": pair[0], "commodity": pair[1],
+                        "raw_projected_requirement": qty, "current_inventory_credited": current_credit,
+                        "future_arrivals_credited": future_credit, "wip_credited": wip_credit,
+                        "safety_stock_requirement": 0.0, "final_uncovered_quantity": missing,
+                        "required_receipt_week": due, "minimum_route_lead_time_bound": lead,
+                        "latest_feasible_dispatch_week": None if lead is None else due - int(lead),
+                        "emitted_quantity": missing, "due_week": due,
+                        "priority": grid_need.priority,
+                        "shortage_value": grid_need.shortage_cost_per_unit_usd,
+                        "reason": "fuel_replenishment", "need_id": result[-1].need_id,
+                        "upstream_of": grid_need.need_id,
+                    })
+        if network is not None:
+            by_id = {need.need_id: need for need in result}
+            for item in trace:
+                need = by_id[item["need_id"]]
+                candidates = []
+                for slot in network.slots_to.get((need.destination_node, need.commodity_id), ()):
+                    route = network.routes[slot]
+                    times = [reader.number("graph_now.tau", edge) for edge in route.edges]
+                    if all(value is not None and value == int(value) for value in times):
+                        candidates.append(sum(int(value) for value in times))
+                if candidates:
+                    item["minimum_route_lead_time_bound"] = min(candidates)
+                    item["latest_feasible_dispatch_week"] = need.due_week - min(candidates)
+                    if item["latest_feasible_dispatch_week"] < state.week:
+                        issues.append(f"need:{need.need_id}:impossible_deadline_at_creation")
+        self.last_trace = tuple(trace)
         self.last_issues = tuple(issues)
         return tuple(sorted(result, key=need_order_key))
 

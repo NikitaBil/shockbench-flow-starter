@@ -813,6 +813,73 @@ def test_unknown_stock_does_not_create_a_zero_based_replenishment(api):
     assert f"stock:{pair}:unknown_coverage" in planner.last_issues
 
 
+def test_grid_fuel_deficit_creates_separate_terminal_replenishment_need(api):
+    a = empty(api("full"))
+    grid = next(node for node in a.config["layout"]["grids"]
+                if any(a.config["static"]["nodes"]["type"][r.source_node] == "terminal"
+                       for r in a.network.routes
+                       if r.destination_node == node and a.network.commodity_names[r.commodity_id] == "lng"))
+    fuel = a.network.commodity_names.index("lng")
+    grid_row = list(a.config["layout"]["grids"]).index(grid)
+    a.obs["graph_now.grid.G_bar"][grid_row] = 100.0
+    profile = a.config["static"]["instance"]["nodes"][grid]["grid"]
+    profile["shares"]["lng"] = max(float(profile["shares"].get("lng", 0.0)), 1.0)
+    state = a.state.StateBuilder(a.config).build(a.obs, a.network)
+    planner = a.needs.NeedPlanner(
+        a.config, production_horizon=1, safety_stock=False, fuel_replenishment_enabled=True
+    )
+    needs = planner.plan(state, a.obs, a.network)
+    downstream = [n for n in needs if n.commodity_id == fuel and n.reason == "grid_fuel"
+                  and any(a.config["static"]["nodes"]["type"][r.source_node] == "terminal"
+                          and r.destination_node == n.destination_node
+                          and r.commodity_id == fuel for r in a.network.routes)]
+    upstream = [n for n in needs if n.reason == "fuel_replenishment"
+                and any(r.source_node == n.destination_node and r.destination_node == grid
+                        and r.commodity_id == n.commodity_id for r in a.network.routes)]
+    assert downstream and upstream
+    assert all(n.destination_node != grid for n in upstream)
+    assert sum(n.quantity for n in upstream) <= sum(n.quantity for n in downstream)
+    assert all(any(r.destination_node == n.destination_node and r.commodity_id == n.commodity_id
+                   and a.config["static"]["nodes"]["type"][r.source_node] == "source"
+                   for r in a.network.routes) for n in upstream)
+    assert any(n.due_week > state.week for n in upstream)
+    assert any("impossible_deadline_at_creation" in issue for issue in planner.last_issues)
+    assert any(row["reason"] == "fuel_replenishment" and row["latest_feasible_dispatch_week"] is not None
+               for row in planner.last_trace)
+
+
+def test_fuel_replenishment_uses_terminal_stock_and_future_arrivals_once(api):
+    a = empty(api("full"))
+    coupling = next(r for r in a.network.routes
+                    if a.config["static"]["nodes"]["type"][r.source_node] == "terminal"
+                    and a.config["static"]["nodes"]["type"][r.destination_node] == "grid"
+                    and a.network.commodity_names[r.commodity_id] == "lng"
+                    and a.network.slots_from.get((r.source_node, r.commodity_id)))
+    grid_pair = coupling.destination_node, coupling.commodity_id
+    terminal_pair = coupling.source_node, coupling.commodity_id
+    rows = list(map(tuple, a.config["layout"]["stock_slots"]))
+    a.obs["stock.qty"][rows.index(grid_pair)] = 0
+    a.obs["stock.qty"][rows.index(terminal_pair)] = 5
+    a.obs["graph_now.grid.G_bar"][list(a.config["layout"]["grids"]).index(coupling.destination_node)] = 20
+    grid_profile = a.config["static"]["instance"]["nodes"][coupling.destination_node]["grid"]
+    grid_profile["shares"]["lng"] = 1.0
+    state = a.state.StateBuilder(a.config).build(a.obs, a.network)
+    arrival = a.contracts.ExpectedArrival(
+        "terminal-fuel-future", "pipeline-fuel", "pipeline", terminal_pair[0], terminal_pair[1],
+        a.contracts.Quantity(4.0, "observed"), 1, "observed"
+    )
+    state = replace(state, arrivals=state.arrivals + (arrival,))
+    planner = a.needs.NeedPlanner(a.config, production_horizon=1, safety_stock=False,
+                                  fuel_replenishment_enabled=True)
+    needs = planner.plan(state, a.obs, a.network)
+    downstream = sum(n.quantity for n in needs if (n.destination_node, n.commodity_id) == grid_pair
+                    and n.reason == "grid_fuel")
+    upstream = sum(n.quantity for n in needs if (n.destination_node, n.commodity_id) == terminal_pair
+                   and n.reason == "fuel_replenishment")
+    assert upstream == max(0.0, downstream - 9.0)
+    assert state.available_stock[terminal_pair].value == 5.0
+
+
 def test_forecasts_stop_at_episode_horizon(api):
     a = empty(api())
     a.obs["week"][:] = a.config["T"]

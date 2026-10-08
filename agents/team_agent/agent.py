@@ -42,6 +42,9 @@ class Agent:
             raise ValueError("closure_wait_enabled must be a boolean")
         if closure_wait and not (enabled and queue_eta):
             raise ValueError("closure_wait_enabled requires allocation_enabled and queue_eta_enabled")
+        planner_options = PARAMS.get("planner_options", {})
+        if not isinstance(planner_options, dict):
+            raise ValueError("planner_options must be an object")
         self.pipeline = (
             pipeline
             if pipeline is not None
@@ -52,6 +55,7 @@ class Agent:
                 queue_eta_enabled=queue_eta,
                 announced_eta_guard_enabled=announced_guard,
                 closure_wait_enabled=closure_wait,
+                planner_options=planner_options,
             )
         )
         self.last_allocation = None
