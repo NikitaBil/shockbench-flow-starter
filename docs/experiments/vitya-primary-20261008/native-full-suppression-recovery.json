@@ -1,0 +1,626 @@
+{
+  "status": "completed",
+  "task": "full",
+  "entropy": 202610081,
+  "episode_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "replay_seed": 0,
+  "quick": false,
+  "official_cpu_budget_enforced": false,
+  "rss": null,
+  "rss_interval": null,
+  "candidate": [
+    {
+      "episode": 0,
+      "weeks": 104,
+      "cost_usd": 6622375712888.13,
+      "cost_components_usd": {
+        "freight": 24519447617.937626,
+        "war_risk": 137579474.28964487,
+        "tariff": 50355226322.346245,
+        "holding": 44689408793.04476,
+        "queue_holding": 30412766217.526897,
+        "shortage": 2689451706145.866,
+        "disposal": 70287394206.29683,
+        "shed": 3724015885921.826
+      },
+      "salvage_usd": 11493701810.95,
+      "constructor_cpu_s": 0.03125,
+      "week1_cpu_s": 0.203125,
+      "max_cpu_s": 0.203125,
+      "median_cpu_s": 0.1171875,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 1,
+        "overrides[51]: slot 53 masked this week": 47,
+        "overrides[53]: slot 53 masked this week": 54
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {
+        "no_visible_residual": 102,
+        "recovered": 2
+      }
+    },
+    {
+      "episode": 1,
+      "weeks": 104,
+      "cost_usd": 6514372250254.31,
+      "cost_components_usd": {
+        "freight": 26008738243.742134,
+        "war_risk": 212930745.74537027,
+        "tariff": 50431444762.33782,
+        "holding": 48862057267.23926,
+        "queue_holding": 40981964293.70419,
+        "shortage": 2023664227134.0977,
+        "disposal": 37133044487.23708,
+        "shed": 4299666147130.311
+      },
+      "salvage_usd": 12588303810.06,
+      "constructor_cpu_s": 0.015625,
+      "week1_cpu_s": 0.0625,
+      "max_cpu_s": 0.09375,
+      "median_cpu_s": 0.0625,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 1,
+        "overrides[53]: slot 53 masked this week": 101
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {
+        "no_visible_residual": 86,
+        "recovered": 18
+      }
+    },
+    {
+      "episode": 2,
+      "weeks": 104,
+      "cost_usd": 7131036753460.79,
+      "cost_components_usd": {
+        "freight": 22028464111.06343,
+        "war_risk": 0.0,
+        "tariff": 18836369576.684807,
+        "holding": 42345731614.466354,
+        "queue_holding": 9443066834.935053,
+        "shortage": 2727239077799.12,
+        "disposal": 41614608202.15051,
+        "shed": 4278802768012.014
+      },
+      "salvage_usd": 9273332689.7,
+      "constructor_cpu_s": 0.015625,
+      "week1_cpu_s": 0.078125,
+      "max_cpu_s": 0.078125,
+      "median_cpu_s": 0.046875,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[52]: slot 53 masked this week": 1,
+        "overrides[53]: slot 53 masked this week": 101
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {
+        "no_visible_residual": 104
+      }
+    },
+    {
+      "episode": 3,
+      "weeks": 104,
+      "cost_usd": 6978327416367.93,
+      "cost_components_usd": {
+        "freight": 17019343714.119604,
+        "war_risk": 9413946.148580637,
+        "tariff": 10554365809.49058,
+        "holding": 31089961811.741394,
+        "queue_holding": 9143800290.278732,
+        "shortage": 2594971258787.397,
+        "disposal": 23248420747.427876,
+        "shed": 4298384890503.5757
+      },
+      "salvage_usd": 6094039242.25,
+      "constructor_cpu_s": 0.015625,
+      "week1_cpu_s": 0.078125,
+      "max_cpu_s": 0.15625,
+      "median_cpu_s": 0.109375,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[46]: slot 53 masked this week": 1,
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 44,
+        "overrides[53]: slot 53 masked this week": 56,
+        "overrides[52]: slot 53 masked this week": 1
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {
+        "no_visible_residual": 102,
+        "recovered": 2
+      }
+    },
+    {
+      "episode": 4,
+      "weeks": 104,
+      "cost_usd": 6146801550272.12,
+      "cost_components_usd": {
+        "freight": 17218091067.167915,
+        "war_risk": 158480320.12039787,
+        "tariff": 9511161041.868456,
+        "holding": 31516180393.14185,
+        "queue_holding": 25700230494.619854,
+        "shortage": 2729429927133.047,
+        "disposal": 46286597914.42959,
+        "shed": 3291859797446.7563
+      },
+      "salvage_usd": 4878915538.99,
+      "constructor_cpu_s": 0.03125,
+      "week1_cpu_s": 0.125,
+      "max_cpu_s": 0.140625,
+      "median_cpu_s": 0.09375,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[52]: slot 53 masked this week": 1,
+        "overrides[53]: slot 53 masked this week": 101
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {
+        "no_visible_residual": 98,
+        "recovered": 6
+      }
+    },
+    {
+      "episode": 5,
+      "weeks": 104,
+      "cost_usd": 8353564637110.85,
+      "cost_components_usd": {
+        "freight": 17864436740.574722,
+        "war_risk": 0.0,
+        "tariff": 3201857649.129194,
+        "holding": 33630968663.69847,
+        "queue_holding": 9357295826.70657,
+        "shortage": 1886140770884.9907,
+        "disposal": 18454747006.981014,
+        "shed": 6391069210461.4795
+      },
+      "salvage_usd": 6154650122.73,
+      "constructor_cpu_s": 0.03125,
+      "week1_cpu_s": 0.15625,
+      "max_cpu_s": 0.171875,
+      "median_cpu_s": 0.15625,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[47]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 34,
+        "overrides[53]: slot 53 masked this week": 39,
+        "overrides[44]: slot 53 masked this week": 6,
+        "overrides[35]: slot 53 masked this week": 1,
+        "overrides[41]: slot 53 masked this week": 1,
+        "overrides[51]: slot 53 masked this week": 18,
+        "overrides[48]: slot 53 masked this week": 3
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {
+        "no_visible_residual": 101,
+        "recovered": 3
+      }
+    },
+    {
+      "episode": 6,
+      "weeks": 104,
+      "cost_usd": 10235205612334.15,
+      "cost_components_usd": {
+        "freight": 22104542594.24569,
+        "war_risk": 4589843.086291168,
+        "tariff": 25114587593.710415,
+        "holding": 42059522739.871414,
+        "queue_holding": 9934289240.213545,
+        "shortage": 2545308720021.799,
+        "disposal": 36442014866.72149,
+        "shed": 7565125075261.116
+      },
+      "salvage_usd": 10887729826.62,
+      "constructor_cpu_s": 0.015625,
+      "week1_cpu_s": 0.046875,
+      "max_cpu_s": 0.046875,
+      "median_cpu_s": 0.03125,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[47]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 1,
+        "overrides[51]: slot 53 masked this week": 30,
+        "overrides[53]: slot 53 masked this week": 71
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {
+        "no_visible_residual": 100,
+        "recovered": 4
+      }
+    },
+    {
+      "episode": 7,
+      "weeks": 104,
+      "cost_usd": 2747592073269.28,
+      "cost_components_usd": {
+        "freight": 25448504374.71797,
+        "war_risk": 0.0,
+        "tariff": 4498467454.562706,
+        "holding": 44972080963.12652,
+        "queue_holding": 13820673848.48251,
+        "shortage": 1732220724542.074,
+        "disposal": 20472452147.962257,
+        "shed": 917750347270.0673
+      },
+      "salvage_usd": 11591177331.7,
+      "constructor_cpu_s": 0.015625,
+      "week1_cpu_s": 0.046875,
+      "max_cpu_s": 0.046875,
+      "median_cpu_s": 0.03125,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {},
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 0,
+      "recovery_status_counts": {
+        "no_visible_residual": 94,
+        "recovered": 10
+      }
+    }
+  ],
+  "baseline": [
+    {
+      "episode": 0,
+      "weeks": 104,
+      "cost_usd": 6622371192074.86,
+      "cost_components_usd": {
+        "freight": 24519399904.86888,
+        "war_risk": 137579474.28964487,
+        "tariff": 50355226322.346245,
+        "holding": 44689408793.04476,
+        "queue_holding": 30412766217.526897,
+        "shortage": 2689451706145.866,
+        "disposal": 70282921106.10167,
+        "shed": 3724015885921.826
+      },
+      "salvage_usd": 11493701810.95,
+      "constructor_cpu_s": 0.015625,
+      "week1_cpu_s": 0.046875,
+      "max_cpu_s": 0.046875,
+      "median_cpu_s": 0.03125,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 1,
+        "overrides[51]: slot 53 masked this week": 47,
+        "overrides[53]: slot 53 masked this week": 54
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {}
+    },
+    {
+      "episode": 1,
+      "weeks": 104,
+      "cost_usd": 6515397639615.7,
+      "cost_components_usd": {
+        "freight": 26007715611.115883,
+        "war_risk": 212909399.12631765,
+        "tariff": 50437537937.77075,
+        "holding": 48933367331.606804,
+        "queue_holding": 40790905802.19398,
+        "shortage": 2022853259245.6914,
+        "disposal": 39090642589.69938,
+        "shed": 4299657545417.946
+      },
+      "salvage_usd": 12586243719.42,
+      "constructor_cpu_s": 0.0,
+      "week1_cpu_s": 0.03125,
+      "max_cpu_s": 0.0625,
+      "median_cpu_s": 0.03125,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 1,
+        "overrides[53]: slot 53 masked this week": 101
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {}
+    },
+    {
+      "episode": 2,
+      "weeks": 104,
+      "cost_usd": 7131036753460.79,
+      "cost_components_usd": {
+        "freight": 22028464111.06343,
+        "war_risk": 0.0,
+        "tariff": 18836369576.684807,
+        "holding": 42345731614.466354,
+        "queue_holding": 9443066834.935053,
+        "shortage": 2727239077799.12,
+        "disposal": 41614608202.15051,
+        "shed": 4278802768012.014
+      },
+      "salvage_usd": 9273332689.7,
+      "constructor_cpu_s": 0.0,
+      "week1_cpu_s": 0.078125,
+      "max_cpu_s": 0.109375,
+      "median_cpu_s": 0.09375,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[52]: slot 53 masked this week": 1,
+        "overrides[53]: slot 53 masked this week": 101
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {}
+    },
+    {
+      "episode": 3,
+      "weeks": 104,
+      "cost_usd": 6978319841157.19,
+      "cost_components_usd": {
+        "freight": 17019393337.94822,
+        "war_risk": 9407265.294972647,
+        "tariff": 10554369212.219318,
+        "holding": 31089863127.37867,
+        "queue_holding": 9148312360.273636,
+        "shortage": 2594970600325.2354,
+        "disposal": 23237020041.854774,
+        "shed": 4298384954769.595
+      },
+      "salvage_usd": 6094079282.57,
+      "constructor_cpu_s": 0.015625,
+      "week1_cpu_s": 0.125,
+      "max_cpu_s": 0.125,
+      "median_cpu_s": 0.09375,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[46]: slot 53 masked this week": 1,
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 44,
+        "overrides[53]: slot 53 masked this week": 56,
+        "overrides[52]: slot 53 masked this week": 1
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {}
+    },
+    {
+      "episode": 4,
+      "weeks": 104,
+      "cost_usd": 6146801122569.09,
+      "cost_components_usd": {
+        "freight": 17218071652.91364,
+        "war_risk": 158468489.22792956,
+        "tariff": 9511161041.868456,
+        "holding": 31516180393.14185,
+        "queue_holding": 25700040485.212566,
+        "shortage": 2729429927133.047,
+        "disposal": 46286380360.224236,
+        "shed": 3291859797446.7563
+      },
+      "salvage_usd": 4878904433.28,
+      "constructor_cpu_s": 0.03125,
+      "week1_cpu_s": 0.125,
+      "max_cpu_s": 0.125,
+      "median_cpu_s": 0.09375,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[49]: slot 53 masked this week": 1,
+        "overrides[52]: slot 53 masked this week": 1,
+        "overrides[53]: slot 53 masked this week": 101
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {}
+    },
+    {
+      "episode": 5,
+      "weeks": 104,
+      "cost_usd": 8353696115782.03,
+      "cost_components_usd": {
+        "freight": 17864416173.638123,
+        "war_risk": 0.0,
+        "tariff": 3201856430.2602525,
+        "holding": 33630258136.419,
+        "queue_holding": 9357368631.431448,
+        "shortage": 1886267543304.3318,
+        "disposal": 18460112585.91718,
+        "shed": 6391069210297.073
+      },
+      "salvage_usd": 6154649777.08,
+      "constructor_cpu_s": 0.0,
+      "week1_cpu_s": 0.03125,
+      "max_cpu_s": 0.046875,
+      "median_cpu_s": 0.03125,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[47]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 34,
+        "overrides[53]: slot 53 masked this week": 39,
+        "overrides[44]: slot 53 masked this week": 6,
+        "overrides[35]: slot 53 masked this week": 1,
+        "overrides[41]: slot 53 masked this week": 1,
+        "overrides[51]: slot 53 masked this week": 18,
+        "overrides[48]: slot 53 masked this week": 3
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {}
+    },
+    {
+      "episode": 6,
+      "weeks": 104,
+      "cost_usd": 10235207532112.17,
+      "cost_components_usd": {
+        "freight": 22104528818.58652,
+        "war_risk": 4589842.454037085,
+        "tariff": 25114587593.71042,
+        "holding": 42059517953.69584,
+        "queue_holding": 9932366809.590809,
+        "shortage": 2545308720021.799,
+        "disposal": 36445843369.68393,
+        "shed": 7565125075261.116
+      },
+      "salvage_usd": 10887697558.5,
+      "constructor_cpu_s": 0.0,
+      "week1_cpu_s": 0.03125,
+      "max_cpu_s": 0.046875,
+      "median_cpu_s": 0.03125,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[47]: slot 53 masked this week": 1,
+        "overrides[50]: slot 53 masked this week": 1,
+        "overrides[51]: slot 53 masked this week": 30,
+        "overrides[53]: slot 53 masked this week": 71
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 103,
+      "recovery_status_counts": {}
+    },
+    {
+      "episode": 7,
+      "weeks": 104,
+      "cost_usd": 2747563282679.41,
+      "cost_components_usd": {
+        "freight": 25448563461.918404,
+        "war_risk": 0.0,
+        "tariff": 4498467454.562706,
+        "holding": 44972085626.674866,
+        "queue_holding": 13820680900.173992,
+        "shortage": 1732191854724.7068,
+        "disposal": 20472452147.962257,
+        "shed": 917750347270.0673
+      },
+      "salvage_usd": 11591168906.65,
+      "constructor_cpu_s": 0.03125,
+      "week1_cpu_s": 0.109375,
+      "max_cpu_s": 0.125,
+      "median_cpu_s": 0.078125,
+      "cpu_budget_s": 4,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {},
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 0,
+      "recovery_status_counts": {}
+    }
+  ],
+  "sha256": {
+    "candidate": "1d00584591cecd1795fff683e68a505464e00a2d7ac0873d4f5b1258c8a5dea4",
+    "baseline": "efa7c00d1d7ac112f269950d020860ed839ed141bd2d60dcc2d7f24361016dbe"
+  },
+  "params": {
+    "candidate": {
+      "balance_fuel_power": 4.0,
+      "balance_pipeline_horizon": 2,
+      "balance_production_power": 2.0,
+      "balance_rate_power": 0.5,
+      "batch_complete_pulse": true,
+      "batch_crude": 1.0,
+      "batch_end_aware": true,
+      "batch_lng": 1.0,
+      "commodity_cost_bias": {
+        "chip_le_raw": 0.0,
+        "chip_mat_raw": 0.0,
+        "wafer": 0.0
+      },
+      "cost_bias": 4.0,
+      "fuel_release_origin_bonus": 4.0,
+      "fuel_release_power": 1.0,
+      "fuel_release_preserve_routes": true,
+      "production_horizon_enabled": true,
+      "production_output_power": 1.0,
+      "release_receiver_cover": 4.0,
+      "route_warning_bias": 1.0,
+      "sales_cover": 4.0,
+      "production_residual_enabled": true
+    },
+    "baseline": {
+      "balance_fuel_power": 4.0,
+      "balance_pipeline_horizon": 2,
+      "balance_production_power": 2.0,
+      "balance_rate_power": 0.5,
+      "batch_complete_pulse": true,
+      "batch_crude": 1.0,
+      "batch_end_aware": true,
+      "batch_lng": 1.0,
+      "commodity_cost_bias": {
+        "chip_le_raw": 0.0,
+        "chip_mat_raw": 0.0,
+        "wafer": 0.0
+      },
+      "cost_bias": 4.0,
+      "fuel_release_origin_bonus": 4.0,
+      "fuel_release_power": 1.0,
+      "fuel_release_preserve_routes": true,
+      "production_horizon_enabled": true,
+      "production_output_power": 1.0,
+      "release_receiver_cover": 4.0,
+      "route_warning_bias": 1.0,
+      "sales_cover": 4.0
+    }
+  },
+  "limitations": [
+    "Native cost screen, NOT isolated sbf compare or certified RSS.",
+    "Same generated episodes; independent policy trajectories; no salted policy seed.",
+    "CPU constructor included; native metering does not enforce fallback.",
+    "Diagnostic invalid entries include ignored zero masked overrides; inspect reasons.",
+    "USD intervals are unnormalized and cannot be converted to RSS without references."
+  ],
+  "paired_cost_delta_usd": -139684186.7102661,
+  "paired_cost_delta_90pct_t_interval_usd": [
+    -381664121.5690943,
+    102295748.14856204
+  ],
+  "candidate_cost_mean_usd": 6841159500744.694,
+  "baseline_cost_mean_usd": 6841299184931.405,
+  "wins": 3,
+  "ties": 1,
+  "evidence_type": "native_matched_cost_not_rss",
+  "implementation_commit": "d79b2fe52b066184eebda94516cf6101fa51c0cb"
+}

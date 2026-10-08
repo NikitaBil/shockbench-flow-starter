@@ -1,0 +1,43 @@
+{
+  "branch": "network-delivery-primary-v1",
+  "base_commit": "d929d12d7cf113e954d15ea3925bfa4a87d63acf",
+  "code_commit": "d79b2fe52b066184eebda94516cf6101fa51c0cb",
+  "candidate_sha256": "1d00584591cecd1795fff683e68a505464e00a2d7ac0873d4f5b1258c8a5dea4",
+  "baseline_sha256": "efa7c00d1d7ac112f269950d020860ed839ed141bd2d60dcc2d7f24361016dbe",
+  "entropy": 202610081,
+  "episode_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "official_linux_check": "blocked_fcntl_on_windows",
+  "official_paired_rss": "not_available",
+  "promotion": "rejected_pending_evidence",
+  "failed_or_incomplete_runs": [
+    {
+      "path": "outputs/audit-tiny",
+      "reason": "initial offline audit used nonexistent Env.state; fixed using trajectory.records"
+    },
+    {
+      "path": "outputs/official-full-attempt.log",
+      "reason": "official score refuses Windows Unix runner"
+    },
+    {
+      "path": "outputs/baseline-full-check.log",
+      "reason": "check static stage passes; timed isolation fails importing fcntl"
+    },
+    {
+      "path": "outputs/candidate-small-check-final.log",
+      "reason": "check static stage passes; timed isolation fails importing fcntl"
+    },
+    {
+      "path": "outputs/candidate-full-check-final.log",
+      "reason": "check static stage passes; timed isolation fails importing fcntl"
+    }
+  ]
+}

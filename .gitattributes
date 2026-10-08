@@ -1,3 +1,4 @@
 # Preserve submission bytes and ZIP hashes across Windows and Linux checkouts.
 /agents/team_agent/** -text whitespace=cr-at-eol
 /agents/team_agent_0781480/** -text whitespace=cr-at-eol
+/agents/team_agent_vitya_v1/** -text whitespace=cr-at-eol
