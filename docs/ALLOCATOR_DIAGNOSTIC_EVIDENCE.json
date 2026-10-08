@@ -1,0 +1,1051 @@
+{
+  "kind": "native_diagnostics_not_rss_or_teammate_reproduction",
+  "entropy": 12345,
+  "policy_parameters": {
+    "allocation_enabled": true,
+    "queue_eta_enabled": true
+  },
+  "queue_eta_limits": {
+    "forecasts_per_allocate": 16,
+    "lookahead_weeks": 24
+  },
+  "diagnostic_commit": "c40eae0",
+  "prune_commit": "8618a99",
+  "forecast_order_commit": "b4ddaef",
+  "full_before_fixes": [
+    {
+      "episode": 0,
+      "cost_usd": 15277576301869.13,
+      "max_local_cpu_s": 0.625,
+      "summary": {
+        "budget_denial_records": 8860,
+        "budget_denial_unique_week_needs": 1621,
+        "budget_denial_unique_week_need_slots": 5695,
+        "budget_denials_with_dispatchable_resources": 8860,
+        "executed_forecasts": 790,
+        "assignment_records": 3849,
+        "late_assignment_records": 2583,
+        "late_already_overdue": 0,
+        "late_no_wait_after_deadline": 2583,
+        "late_queue_or_batch_delay": 0,
+        "reason_records": {
+          "estimated": 9264,
+          "eta_late": 2583,
+          "queue_eta_completion_unresolved": 647,
+          "queue_eta_forecast_budget_exhausted": 8860,
+          "eta_on_time_estimate": 1266,
+          "entry_capacity_exhausted": 19281,
+          "current_resources_exhausted_or_unknown": 20980,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_forecast_budget_exhausted": 1526,
+          "no_source_stock": 116932,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved": 168,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_forecast_budget_exhausted": 12,
+          "queue_eta_delays_selected_shipment": 3,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment": 2,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_delays_selected_shipment": 1,
+          "currently_blocked_delivery_route": 408,
+          "current_resources_exhausted_or_unknown,currently_blocked_delivery_route": 92,
+          "estimated_arrival_beyond_horizon": 49,
+          "current_resources_exhausted_or_unknown,estimated_arrival_beyond_horizon": 4
+        }
+      },
+      "budget_by_commodity": {
+        "chip_mat": 3402,
+        "chip_le_raw": 4944,
+        "chip_mat_raw": 472,
+        "wafer": 42
+      },
+      "budget_denial_examples": [
+        {
+          "week": 1,
+          "need_id": "current_demand:71:7:1",
+          "need_rank": 8,
+          "priority": 3.0,
+          "due_week": 1,
+          "destination_node": 71,
+          "commodity_id": 7,
+          "slot_id": 374,
+          "stage": "eta",
+          "reason": "queue_eta_forecast_budget_exhausted",
+          "source_stock": 83877.32764537749,
+          "entry_capacity": 19571.37645058809,
+          "permission_observed": true,
+          "fleet_remaining": 986905.0160126855,
+          "fleet_weight": 0,
+          "quantity": 3067.688916644387,
+          "calls_before": 16,
+          "calls_after": 16,
+          "cache_hit": false,
+          "eta": null,
+          "no_wait_arrival": 5
+        },
+        {
+          "week": 1,
+          "need_id": "current_demand:71:7:1",
+          "need_rank": 8,
+          "priority": 3.0,
+          "due_week": 1,
+          "destination_node": 71,
+          "commodity_id": 7,
+          "slot_id": 336,
+          "stage": "eta",
+          "reason": "queue_eta_forecast_budget_exhausted",
+          "source_stock": 466857.1629575016,
+          "entry_capacity": 11019.246680675396,
+          "permission_observed": true,
+          "fleet_remaining": 986905.0160126855,
+          "fleet_weight": 0,
+          "quantity": 3067.688916644387,
+          "calls_before": 16,
+          "calls_after": 16,
+          "cache_hit": false,
+          "eta": null,
+          "no_wait_arrival": 6
+        },
+        {
+          "week": 1,
+          "need_id": "forecast_demand:65:7:2",
+          "need_rank": 20,
+          "priority": 3.0,
+          "due_week": 2,
+          "destination_node": 65,
+          "commodity_id": 7,
+          "slot_id": 279,
+          "stage": "eta",
+          "reason": "queue_eta_forecast_budget_exhausted",
+          "source_stock": 302932.94488018035,
+          "entry_capacity": 72524.38202081171,
+          "permission_observed": true,
+          "fleet_remaining": 986905.0160126855,
+          "fleet_weight": 0,
+          "quantity": 72524.38202081171,
+          "calls_before": 16,
+          "calls_after": 16,
+          "cache_hit": false,
+          "eta": null,
+          "no_wait_arrival": 5
+        }
+      ],
+      "frozen_hash": "69635c11a5f7e82c203d38a22ff15174e74759ea3859af52436d4ac6b2a1c702"
+    },
+    {
+      "episode": 1,
+      "cost_usd": 15768144414651.25,
+      "max_local_cpu_s": 0.71875,
+      "summary": {
+        "budget_denial_records": 3393,
+        "budget_denial_unique_week_needs": 794,
+        "budget_denial_unique_week_need_slots": 1908,
+        "budget_denials_with_dispatchable_resources": 3393,
+        "executed_forecasts": 428,
+        "assignment_records": 3598,
+        "late_assignment_records": 2238,
+        "late_already_overdue": 0,
+        "late_no_wait_after_deadline": 2238,
+        "late_queue_or_batch_delay": 0,
+        "reason_records": {
+          "estimated": 8461,
+          "eta_late": 2238,
+          "eta_on_time_estimate": 1360,
+          "entry_capacity_exhausted": 15162,
+          "current_resources_exhausted_or_unknown": 22122,
+          "queue_eta_delays_selected_shipment": 78,
+          "queue_eta_forecast_budget_exhausted": 3393,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment,queue_eta_forecast_budget_exhausted": 13,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_forecast_budget_exhausted": 702,
+          "no_source_stock": 125055,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment": 28,
+          "queue_eta_completion_unresolved": 73,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_forecast_budget_exhausted": 8,
+          "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved": 32,
+          "estimated_arrival_beyond_horizon": 75,
+          "current_resources_exhausted_or_unknown,estimated_arrival_beyond_horizon": 2
+        }
+      },
+      "budget_by_commodity": {
+        "chip_mat": 1134,
+        "chip_le_raw": 1963,
+        "chip_mat_raw": 287,
+        "wafer": 9
+      },
+      "budget_denial_examples": [
+        {
+          "week": 1,
+          "need_id": "forecast_demand:65:7:2",
+          "need_rank": 19,
+          "priority": 3.0,
+          "due_week": 2,
+          "destination_node": 65,
+          "commodity_id": 7,
+          "slot_id": 279,
+          "stage": "eta",
+          "reason": "queue_eta_forecast_budget_exhausted",
+          "source_stock": 300493.1242748145,
+          "entry_capacity": 72524.38202081171,
+          "permission_observed": true,
+          "fleet_remaining": 986905.0160126855,
+          "fleet_weight": 0,
+          "quantity": 60000.564002821455,
+          "calls_before": 16,
+          "calls_after": 16,
+          "cache_hit": false,
+          "eta": null,
+          "no_wait_arrival": 5
+        },
+        {
+          "week": 1,
+          "need_id": "forecast_demand:65:7:2",
+          "need_rank": 19,
+          "priority": 3.0,
+          "due_week": 2,
+          "destination_node": 65,
+          "commodity_id": 7,
+          "slot_id": 310,
+          "stage": "eta",
+          "reason": "queue_eta_forecast_budget_exhausted",
+          "source_stock": 81419.31271400547,
+          "entry_capacity": 18997.83963326794,
+          "permission_observed": true,
+          "fleet_remaining": 986905.0160126855,
+          "fleet_weight": 0,
+          "quantity": 18997.83963326794,
+          "calls_before": 16,
+          "calls_after": 16,
+          "cache_hit": false,
+          "eta": null,
+          "no_wait_arrival": 5
+        },
+        {
+          "week": 1,
+          "need_id": "forecast_demand:66:7:2",
+          "need_rank": 20,
+          "priority": 3.0,
+          "due_week": 2,
+          "destination_node": 66,
+          "commodity_id": 7,
+          "slot_id": 282,
+          "stage": "eta",
+          "reason": "queue_eta_forecast_budget_exhausted",
+          "source_stock": 300493.1242748145,
+          "entry_capacity": 145048.76404162342,
+          "permission_observed": true,
+          "fleet_remaining": 986905.0160126855,
+          "fleet_weight": 0,
+          "quantity": 145048.76404162342,
+          "calls_before": 16,
+          "calls_after": 16,
+          "cache_hit": false,
+          "eta": null,
+          "no_wait_arrival": 3
+        }
+      ],
+      "frozen_hash": "69635c11a5f7e82c203d38a22ff15174e74759ea3859af52436d4ac6b2a1c702"
+    }
+  ],
+  "stage_comparisons": [
+    {
+      "change": "horizon_prune",
+      "task": "full",
+      "episode": 0,
+      "frozen_hashes": {
+        "candidate": "a34d6ffad408b508bce8f8d449ca8e581838a5c23ac59653a0c0ad4d70aec775",
+        "baseline": "69635c11a5f7e82c203d38a22ff15174e74759ea3859af52436d4ac6b2a1c702"
+      },
+      "candidate": {
+        "cost_usd": 15277576301869.13,
+        "max_local_cpu_s": 0.640625,
+        "summary": {
+          "budget_denial_records": 8860,
+          "budget_denial_unique_week_needs": 1621,
+          "budget_denial_unique_week_need_slots": 5695,
+          "budget_denials_with_dispatchable_resources": 8860,
+          "executed_forecasts": 787,
+          "assignment_records": 3849,
+          "late_assignment_records": 2583,
+          "late_already_overdue": 0,
+          "late_no_wait_after_deadline": 2583,
+          "late_queue_or_batch_delay": 0,
+          "reason_records": {
+            "estimated": 9170,
+            "eta_late": 2583,
+            "queue_eta_completion_unresolved": 644,
+            "queue_eta_forecast_budget_exhausted": 8860,
+            "eta_on_time_estimate": 1266,
+            "entry_capacity_exhausted": 19281,
+            "current_resources_exhausted_or_unknown": 20980,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_forecast_budget_exhausted": 1526,
+            "no_source_stock": 116932,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved": 168,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_forecast_budget_exhausted": 12,
+            "queue_eta_delays_selected_shipment": 3,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment": 2,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_delays_selected_shipment": 1,
+            "currently_blocked_delivery_route": 408,
+            "current_resources_exhausted_or_unknown,currently_blocked_delivery_route": 92,
+            "estimated_arrival_beyond_horizon": 146,
+            "current_resources_exhausted_or_unknown,estimated_arrival_beyond_horizon": 4
+          }
+        }
+      },
+      "baseline": {
+        "cost_usd": 15277576301869.13,
+        "max_local_cpu_s": 0.625,
+        "summary": {
+          "budget_denial_records": 8860,
+          "budget_denial_unique_week_needs": 1621,
+          "budget_denial_unique_week_need_slots": 5695,
+          "budget_denials_with_dispatchable_resources": 8860,
+          "executed_forecasts": 790,
+          "assignment_records": 3849,
+          "late_assignment_records": 2583,
+          "late_already_overdue": 0,
+          "late_no_wait_after_deadline": 2583,
+          "late_queue_or_batch_delay": 0,
+          "reason_records": {
+            "estimated": 9264,
+            "eta_late": 2583,
+            "queue_eta_completion_unresolved": 647,
+            "queue_eta_forecast_budget_exhausted": 8860,
+            "eta_on_time_estimate": 1266,
+            "entry_capacity_exhausted": 19281,
+            "current_resources_exhausted_or_unknown": 20980,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_forecast_budget_exhausted": 1526,
+            "no_source_stock": 116932,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved": 168,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_forecast_budget_exhausted": 12,
+            "queue_eta_delays_selected_shipment": 3,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment": 2,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_delays_selected_shipment": 1,
+            "currently_blocked_delivery_route": 408,
+            "current_resources_exhausted_or_unknown,currently_blocked_delivery_route": 92,
+            "estimated_arrival_beyond_horizon": 49,
+            "current_resources_exhausted_or_unknown,estimated_arrival_beyond_horizon": 4
+          }
+        }
+      },
+      "flows_identical_each_week": true
+    },
+    {
+      "change": "forecast_order",
+      "task": "full",
+      "episode": 0,
+      "frozen_hashes": {
+        "candidate": "7d555b56554ff6adc79d1f3c53852d669c7ce8808f971af9b5c2e27575d29b58",
+        "baseline": "a34d6ffad408b508bce8f8d449ca8e581838a5c23ac59653a0c0ad4d70aec775"
+      },
+      "candidate": {
+        "cost_usd": 15277576301869.13,
+        "max_local_cpu_s": 0.5625,
+        "summary": {
+          "budget_denial_records": 8860,
+          "budget_denial_unique_week_needs": 1621,
+          "budget_denial_unique_week_need_slots": 5695,
+          "budget_denials_with_dispatchable_resources": 8860,
+          "executed_forecasts": 787,
+          "assignment_records": 3849,
+          "late_assignment_records": 2583,
+          "late_already_overdue": 0,
+          "late_no_wait_after_deadline": 2583,
+          "late_queue_or_batch_delay": 0,
+          "reason_records": {
+            "estimated": 9170,
+            "eta_late": 2583,
+            "queue_eta_completion_unresolved": 644,
+            "queue_eta_forecast_budget_exhausted": 8860,
+            "eta_on_time_estimate": 1266,
+            "entry_capacity_exhausted": 19281,
+            "current_resources_exhausted_or_unknown": 20980,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_forecast_budget_exhausted": 1526,
+            "no_source_stock": 116932,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved": 168,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_forecast_budget_exhausted": 12,
+            "queue_eta_delays_selected_shipment": 3,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment": 2,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_delays_selected_shipment": 1,
+            "currently_blocked_delivery_route": 408,
+            "current_resources_exhausted_or_unknown,currently_blocked_delivery_route": 92,
+            "estimated_arrival_beyond_horizon": 146,
+            "current_resources_exhausted_or_unknown,estimated_arrival_beyond_horizon": 4
+          }
+        }
+      },
+      "baseline": {
+        "cost_usd": 15277576301869.13,
+        "max_local_cpu_s": 0.265625,
+        "summary": {
+          "budget_denial_records": 8860,
+          "budget_denial_unique_week_needs": 1621,
+          "budget_denial_unique_week_need_slots": 5695,
+          "budget_denials_with_dispatchable_resources": 8860,
+          "executed_forecasts": 787,
+          "assignment_records": 3849,
+          "late_assignment_records": 2583,
+          "late_already_overdue": 0,
+          "late_no_wait_after_deadline": 2583,
+          "late_queue_or_batch_delay": 0,
+          "reason_records": {
+            "estimated": 9170,
+            "eta_late": 2583,
+            "queue_eta_completion_unresolved": 644,
+            "queue_eta_forecast_budget_exhausted": 8860,
+            "eta_on_time_estimate": 1266,
+            "entry_capacity_exhausted": 19281,
+            "current_resources_exhausted_or_unknown": 20980,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_forecast_budget_exhausted": 1526,
+            "no_source_stock": 116932,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved": 168,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_forecast_budget_exhausted": 12,
+            "queue_eta_delays_selected_shipment": 3,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment": 2,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved,queue_eta_delays_selected_shipment": 1,
+            "currently_blocked_delivery_route": 408,
+            "current_resources_exhausted_or_unknown,currently_blocked_delivery_route": 92,
+            "estimated_arrival_beyond_horizon": 146,
+            "current_resources_exhausted_or_unknown,estimated_arrival_beyond_horizon": 4
+          }
+        }
+      },
+      "flows_identical_each_week": true
+    },
+    {
+      "change": "forecast_order",
+      "task": "small",
+      "episode": 0,
+      "frozen_hashes": {
+        "candidate": "7d555b56554ff6adc79d1f3c53852d669c7ce8808f971af9b5c2e27575d29b58",
+        "baseline": "a34d6ffad408b508bce8f8d449ca8e581838a5c23ac59653a0c0ad4d70aec775"
+      },
+      "candidate": {
+        "cost_usd": 5185258028643.92,
+        "max_local_cpu_s": 0.125,
+        "summary": {
+          "budget_denial_records": 332,
+          "budget_denial_unique_week_needs": 109,
+          "budget_denial_unique_week_need_slots": 235,
+          "budget_denials_with_dispatchable_resources": 332,
+          "executed_forecasts": 317,
+          "assignment_records": 697,
+          "late_assignment_records": 410,
+          "late_already_overdue": 0,
+          "late_no_wait_after_deadline": 409,
+          "late_queue_or_batch_delay": 1,
+          "reason_records": {
+            "estimated": 1443,
+            "eta_late": 410,
+            "eta_on_time_estimate": 287,
+            "entry_capacity_exhausted": 2080,
+            "current_resources_exhausted_or_unknown": 4860,
+            "queue_eta_completion_unresolved": 69,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved": 53,
+            "no_source_stock": 9542,
+            "queue_eta_delays_selected_shipment": 136,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment": 14,
+            "queue_eta_forecast_budget_exhausted": 332,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment,queue_eta_forecast_budget_exhausted": 14,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_forecast_budget_exhausted": 67,
+            "delivery_eta_unknown,queue_eta_delays_selected_shipment": 5,
+            "all_delivery_slots_prohibited": 47,
+            "no_permitted_delivery_slot": 47,
+            "estimated_arrival_beyond_horizon": 32,
+            "currently_blocked_delivery_route": 26,
+            "current_resources_exhausted_or_unknown,currently_blocked_delivery_route": 18
+          }
+        }
+      },
+      "baseline": {
+        "cost_usd": 5185258028643.92,
+        "max_local_cpu_s": 0.140625,
+        "summary": {
+          "budget_denial_records": 332,
+          "budget_denial_unique_week_needs": 109,
+          "budget_denial_unique_week_need_slots": 235,
+          "budget_denials_with_dispatchable_resources": 332,
+          "executed_forecasts": 317,
+          "assignment_records": 697,
+          "late_assignment_records": 410,
+          "late_already_overdue": 0,
+          "late_no_wait_after_deadline": 409,
+          "late_queue_or_batch_delay": 1,
+          "reason_records": {
+            "estimated": 1443,
+            "eta_late": 410,
+            "eta_on_time_estimate": 287,
+            "entry_capacity_exhausted": 2080,
+            "current_resources_exhausted_or_unknown": 4860,
+            "queue_eta_completion_unresolved": 69,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_completion_unresolved": 53,
+            "no_source_stock": 9542,
+            "queue_eta_delays_selected_shipment": 136,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment": 14,
+            "queue_eta_forecast_budget_exhausted": 332,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_delays_selected_shipment,queue_eta_forecast_budget_exhausted": 14,
+            "current_resources_exhausted_or_unknown,delivery_eta_unknown,queue_eta_forecast_budget_exhausted": 67,
+            "delivery_eta_unknown,queue_eta_delays_selected_shipment": 5,
+            "all_delivery_slots_prohibited": 47,
+            "no_permitted_delivery_slot": 47,
+            "estimated_arrival_beyond_horizon": 32,
+            "currently_blocked_delivery_route": 26,
+            "current_resources_exhausted_or_unknown,currently_blocked_delivery_route": 18
+          }
+        }
+      },
+      "flows_identical_each_week": true
+    }
+  ],
+  "full_first_seven_weeks": [
+    {
+      "week": 1,
+      "synchronized": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        },
+        "nucfuel_need_count": 0,
+        "wafer_requirement_pairs": 0
+      },
+      "premerge": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 648582.8281641975,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        }
+      },
+      "heuristic": {
+        "nucfuel_requested": 48768.0,
+        "wafer_requested": 6211141.067327679,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        }
+      }
+    },
+    {
+      "week": 2,
+      "synchronized": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        },
+        "nucfuel_need_count": 0,
+        "wafer_requirement_pairs": 0
+      },
+      "premerge": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 202375.94999999998,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        }
+      },
+      "heuristic": {
+        "nucfuel_requested": 48768.0,
+        "wafer_requested": 6211141.067327679,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        }
+      }
+    },
+    {
+      "week": 3,
+      "synchronized": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        },
+        "nucfuel_need_count": 0,
+        "wafer_requirement_pairs": 0
+      },
+      "premerge": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        }
+      },
+      "heuristic": {
+        "nucfuel_requested": 48768.0,
+        "wafer_requested": 6211141.067327679,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        }
+      }
+    },
+    {
+      "week": 4,
+      "synchronized": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 360.0,
+          "grid_kr": 0.0
+        },
+        "nucfuel_need_count": 0,
+        "wafer_requirement_pairs": 0
+      },
+      "premerge": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 360.0,
+          "grid_kr": 0.0
+        }
+      },
+      "heuristic": {
+        "nucfuel_requested": 48768.0,
+        "wafer_requested": 6211141.067327679,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 0.0
+        }
+      }
+    },
+    {
+      "week": 5,
+      "synchronized": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 360.0,
+          "grid_kr": 922.5808012270245
+        },
+        "nucfuel_need_count": 0,
+        "wafer_requirement_pairs": 0
+      },
+      "premerge": {
+        "nucfuel_requested": 0,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 360.0,
+          "grid_kr": 945.5633367079863
+        }
+      },
+      "heuristic": {
+        "nucfuel_requested": 48768.0,
+        "wafer_requested": 6211141.067327679,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 1148.2640349175417
+        }
+      }
+    },
+    {
+      "week": 6,
+      "synchronized": {
+        "nucfuel_requested": 37701.910967439006,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 360.0,
+          "grid_kr": 2509.1071106328363
+        },
+        "nucfuel_need_count": 6,
+        "wafer_requirement_pairs": 0
+      },
+      "premerge": {
+        "nucfuel_requested": 37730.065831378306,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 360.0,
+          "grid_kr": 2509.1071106328363
+        }
+      },
+      "heuristic": {
+        "nucfuel_requested": 48768.0,
+        "wafer_requested": 7011832.575943828,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 2509.1071106328363
+        }
+      }
+    },
+    {
+      "week": 7,
+      "synchronized": {
+        "nucfuel_requested": 43597.2,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 360.0,
+          "grid_kr": 2483.399220571934
+        },
+        "nucfuel_need_count": 6,
+        "wafer_requirement_pairs": 0
+      },
+      "premerge": {
+        "nucfuel_requested": 43597.2,
+        "wafer_requested": 0,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 360.0,
+          "grid_kr": 2483.399220571934
+        }
+      },
+      "heuristic": {
+        "nucfuel_requested": 48768.0,
+        "wafer_requested": 7011832.575943828,
+        "shed_gwh": {
+          "grid_tw": 0.0,
+          "grid_in": 0.0,
+          "grid_kr": 2401.5462420575714
+        }
+      }
+    }
+  ],
+  "week_three_nucfuel_coverage_examples": [
+    {
+      "destination": "grid_kr",
+      "stock": {
+        "value": 171845.78996768408,
+        "source": "observed",
+        "confidence": null
+      },
+      "raw_requirements": [
+        [
+          3,
+          3163.29609,
+          3.0,
+          "grid_fuel",
+          null,
+          [
+            "fuel requirement covers static base load plus grounded Fab energy",
+            "generation is capped by observed deliverable G_bar, not treated as a production target",
+            "Fab energy is assigned to its scheduled production week"
+          ]
+        ],
+        [
+          4,
+          3163.29609,
+          3.0,
+          "grid_fuel",
+          null,
+          [
+            "fuel requirement covers static base load plus grounded Fab energy",
+            "generation is capped by observed deliverable G_bar, not treated as a production target",
+            "Fab energy is assigned to its scheduled production week"
+          ]
+        ],
+        [
+          5,
+          3163.29609,
+          3.0,
+          "grid_fuel",
+          null,
+          [
+            "fuel requirement covers static base load plus grounded Fab energy",
+            "generation is capped by observed deliverable G_bar, not treated as a production target",
+            "Fab energy is assigned to its scheduled production week"
+          ]
+        ],
+        [
+          6,
+          3163.29609,
+          3.0,
+          "grid_fuel",
+          null,
+          [
+            "fuel requirement covers static base load plus grounded Fab energy",
+            "generation is capped by observed deliverable G_bar, not treated as a production target",
+            "Fab energy is assigned to its scheduled production week"
+          ]
+        ]
+      ],
+      "need_ids": [],
+      "action_slots": [
+        43,
+        49
+      ],
+      "classification": "netted_by_planner"
+    },
+    {
+      "destination": "grid_in",
+      "stock": {
+        "value": 56160.0,
+        "source": "observed",
+        "confidence": null
+      },
+      "raw_requirements": [
+        [
+          3,
+          1080.0,
+          3.0,
+          "grid_fuel",
+          null,
+          [
+            "fuel requirement covers static base load plus grounded Fab energy",
+            "generation is capped by observed deliverable G_bar, not treated as a production target",
+            "Fab energy is assigned to its scheduled production week"
+          ]
+        ],
+        [
+          4,
+          1080.0,
+          3.0,
+          "grid_fuel",
+          null,
+          [
+            "fuel requirement covers static base load plus grounded Fab energy",
+            "generation is capped by observed deliverable G_bar, not treated as a production target",
+            "Fab energy is assigned to its scheduled production week"
+          ]
+        ],
+        [
+          5,
+          1080.0,
+          3.0,
+          "grid_fuel",
+          null,
+          [
+            "fuel requirement covers static base load plus grounded Fab energy",
+            "generation is capped by observed deliverable G_bar, not treated as a production target",
+            "Fab energy is assigned to its scheduled production week"
+          ]
+        ],
+        [
+          6,
+          1080.0,
+          3.0,
+          "grid_fuel",
+          null,
+          [
+            "fuel requirement covers static base load plus grounded Fab energy",
+            "generation is capped by observed deliverable G_bar, not treated as a production target",
+            "Fab energy is assigned to its scheduled production week"
+          ]
+        ]
+      ],
+      "need_ids": [],
+      "action_slots": [
+        48,
+        54
+      ],
+      "classification": "netted_by_planner"
+    }
+  ],
+  "week_three_empty_fab_without_wafer_requirement": [
+    {
+      "destination": "fab_tw_leading_1",
+      "stock": {
+        "value": 0.0,
+        "source": "observed",
+        "confidence": null
+      },
+      "raw_requirements": [],
+      "need_ids": [],
+      "action_slots": [
+        70,
+        71,
+        96,
+        97,
+        138,
+        143,
+        145,
+        148,
+        162,
+        168,
+        174
+      ],
+      "classification": "no_raw_requirement"
+    },
+    {
+      "destination": "fab_tw_mature_1",
+      "stock": {
+        "value": 0.0,
+        "source": "observed",
+        "confidence": null
+      },
+      "raw_requirements": [],
+      "need_ids": [],
+      "action_slots": [
+        72,
+        73,
+        154,
+        155,
+        179,
+        180
+      ],
+      "classification": "no_raw_requirement"
+    },
+    {
+      "destination": "fab_kr_leading_1",
+      "stock": {
+        "value": 0.0,
+        "source": "observed",
+        "confidence": null
+      },
+      "raw_requirements": [],
+      "need_ids": [],
+      "action_slots": [
+        76,
+        77,
+        100,
+        101,
+        112,
+        113,
+        156,
+        157,
+        163,
+        169,
+        172,
+        175
+      ],
+      "classification": "no_raw_requirement"
+    }
+  ],
+  "fuel_transfer_examples": [
+    {
+      "route_slot": 55,
+      "commodity": "lng",
+      "source": "term_tw",
+      "destination": "grid_tw",
+      "event": {
+        "week": 3,
+        "need_id": "grid_fuel:25:0:6",
+        "need_rank": 84,
+        "priority": 3.0,
+        "due_week": 6,
+        "destination_node": 25,
+        "commodity_id": 0,
+        "slot_id": 55,
+        "stage": "prefilter",
+        "reason": "no_source_stock",
+        "source_stock": 0.0,
+        "entry_capacity": 3985.2359512384605,
+        "fleet_remaining": 4959.523213079668,
+        "fleet_weight": 0,
+        "quantity": 0.0
+      },
+      "upstream_need_to_terminal_count": 0
+    },
+    {
+      "route_slot": 57,
+      "commodity": "lng",
+      "source": "term_kr",
+      "destination": "grid_kr",
+      "event": {
+        "week": 3,
+        "need_id": "grid_fuel:26:0:5",
+        "need_rank": 57,
+        "priority": 3.0,
+        "due_week": 5,
+        "destination_node": 26,
+        "commodity_id": 0,
+        "slot_id": 57,
+        "stage": "prefilter",
+        "reason": "no_source_stock",
+        "source_stock": 0.0,
+        "entry_capacity": 41769.19681258292,
+        "fleet_remaining": 4959.523213079668,
+        "fleet_weight": 0,
+        "quantity": 0.0
+      },
+      "upstream_need_to_terminal_count": 0
+    },
+    {
+      "route_slot": 58,
+      "commodity": "crude",
+      "source": "term_kr",
+      "destination": "grid_kr",
+      "event": {
+        "week": 3,
+        "need_id": "grid_fuel:26:1:4",
+        "need_rank": 34,
+        "priority": 3.0,
+        "due_week": 4,
+        "destination_node": 26,
+        "commodity_id": 1,
+        "slot_id": 58,
+        "stage": "prefilter",
+        "reason": "no_source_stock",
+        "source_stock": 0.0,
+        "entry_capacity": 43357.06495607338,
+        "fleet_remaining": 4959.523213079668,
+        "fleet_weight": 0,
+        "quantity": 0.0
+      },
+      "upstream_need_to_terminal_count": 0
+    },
+    {
+      "route_slot": 69,
+      "commodity": "crude",
+      "source": "term_in",
+      "destination": "grid_in",
+      "event": {
+        "week": 3,
+        "need_id": "grid_fuel:32:1:4",
+        "need_rank": 39,
+        "priority": 3.0,
+        "due_week": 4,
+        "destination_node": 32,
+        "commodity_id": 1,
+        "slot_id": 69,
+        "stage": "prefilter",
+        "reason": "no_source_stock",
+        "source_stock": 0.0,
+        "entry_capacity": 14820.0,
+        "fleet_remaining": 4959.523213079668,
+        "fleet_weight": 0,
+        "quantity": 0.0
+      },
+      "upstream_need_to_terminal_count": 0
+    }
+  ],
+  "no_permitted_delivery_slot": {
+    "full_episode_0": 0,
+    "full_episode_1": 0,
+    "small_episode_0": 47,
+    "small_all_due_to_prohibition": true,
+    "example": {
+      "week": 6,
+      "need_id": "safety_stock:21:2:9",
+      "need_rank": 102,
+      "priority": 1.0,
+      "due_week": 9,
+      "destination_node": 21,
+      "commodity_id": 2,
+      "slot_id": null,
+      "stage": "route_lookup",
+      "reason": "all_delivery_slots_prohibited",
+      "static_slots": [
+        26
+      ],
+      "commodity_destinations": [
+        19,
+        20,
+        21
+      ],
+      "incoming_commodities": [
+        0,
+        1,
+        2
+      ],
+      "need_reason": "safety_stock"
+    }
+  }
+}

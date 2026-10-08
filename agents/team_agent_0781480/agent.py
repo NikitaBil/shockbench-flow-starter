@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-from closed_route_dispatch import ClosedRouteDispatch
 from dispatch import RoutePreferences
 from dispatch_priority import DispatchPriority
 from fuel_batch import FuelBatch
@@ -72,9 +71,6 @@ class Agent:
         self.slot_powers = tuple(closure_powers.get(self.network.commodity_names[route.commodity_id], self.power)
                                  for route in self.network.routes)
         self.through = tuple(route.chokepoint_positions for route in self.network.routes)
-        self.closed_route_dispatch = ClosedRouteDispatch(
-            self.network, floor=PARAMS.get("closed_route_floor", 0.0),
-            minimum_lead=PARAMS.get("closed_route_min_lead", 1))
         self.route_preferences = RoutePreferences(
             config, self.network,
             transit_bias=PARAMS.get("transit_bias", 0.0),
@@ -111,7 +107,6 @@ class Agent:
             production_value_power=PARAMS.get("production_value_power", 0.0),
             production_energy_power=PARAMS.get("production_energy_power", 0.0),
             production_output_power=PARAMS.get("production_output_power", 0.0),
-            production_wip_horizon=PARAMS.get("production_wip_horizon", 0),
             fuel_mark_rate_floor=PARAMS.get("fuel_mark_rate_floor", 0.0),
             fuel_margin_bonus=PARAMS.get("fuel_margin_bonus", 0.0),
         )
@@ -188,11 +183,10 @@ class Agent:
         flows = self.cap * observation["action_mask"]
         open_now = observation["graph_now.open"]  # 1 open .. 0 closed
         seen = observation["graph_now.open.observed"] == 1
-        staged = self.closed_route_dispatch.adjustments(observation)
         for s, chokepoints in enumerate(self.through):
             for c in chokepoints:
                 if seen[c]:
-                    flows[s] *= max(staged.get((s, c), float(open_now[c])), 0.0) ** self.slot_powers[s]
+                    flows[s] *= max(float(open_now[c]), 0.0) ** self.slot_powers[s]
         flows = self.dispatch_priority.apply(flows, observation)
         flows = self.production_horizon.apply(flows, observation)
         optimized = (self.sales_dispatch.enabled or self.upstream_dispatch.enabled

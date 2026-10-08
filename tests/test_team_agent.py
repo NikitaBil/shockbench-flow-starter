@@ -21,13 +21,16 @@ BASELINE = ROOT / "agents" / "baseline"
 
 
 @pytest.mark.parametrize("task", ["tiny", "small", "full"])
-def test_integrated_policy_matches_baseline_every_week(task):
+def test_neutral_policy_matches_baseline_every_week(task, tmp_path):
+    neutral = tmp_path / "neutral"
+    shutil.copytree(TEAM, neutral, ignore=shutil.ignore_patterns("__pycache__"))
+    (neutral / "params.json").write_text("{}\n", encoding="utf-8")
     env = gym.make(env_id(task), entropy=12345)
     try:
         obs, info = env.reset(seed=0, options={"episode": 0})
         config = agent_config_from_reset(env, obs, info)
         baseline = load(BASELINE)(config)
-        team = load(TEAM)(config)
+        team = load(neutral)(config)
         network = team.network
         assert len(network.routes) == env.action_space["flows"].shape[0]
         assert team.through == tuple(tuple(row) for row in baseline.through)
