@@ -1,0 +1,147 @@
+{
+  "status": "completed",
+  "task": "tiny",
+  "entropy": 202610081,
+  "episode_ids": [
+    0
+  ],
+  "replay_seed": 0,
+  "quick": false,
+  "official_cpu_budget_enforced": false,
+  "rss": null,
+  "rss_interval": null,
+  "candidate": [
+    {
+      "episode": 0,
+      "weeks": 26,
+      "cost_usd": 1249151868.96,
+      "cost_components_usd": {
+        "freight": 2584743.453855735,
+        "war_risk": 0.0,
+        "tariff": 1531081.5748852596,
+        "holding": 4463948.723444373,
+        "queue_holding": 1742415.9607310556,
+        "shortage": 1166584805.3213794,
+        "disposal": 13936478.48641153,
+        "shed": 59256995.596635185
+      },
+      "salvage_usd": 948600.15,
+      "constructor_cpu_s": 0.015625,
+      "week1_cpu_s": 0.015625,
+      "max_cpu_s": 0.015625,
+      "median_cpu_s": 0.0,
+      "cpu_budget_s": 2,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[2]: slot 2 masked this week": 6
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 6,
+      "recovery_status_counts": {
+        "no_visible_residual": 26
+      }
+    }
+  ],
+  "baseline": [
+    {
+      "episode": 0,
+      "weeks": 26,
+      "cost_usd": 1249151868.96,
+      "cost_components_usd": {
+        "freight": 2584743.453855735,
+        "war_risk": 0.0,
+        "tariff": 1531081.5748852596,
+        "holding": 4463948.723444373,
+        "queue_holding": 1742415.9607310556,
+        "shortage": 1166584805.3213794,
+        "disposal": 13936478.48641153,
+        "shed": 59256995.596635185
+      },
+      "salvage_usd": 948600.15,
+      "constructor_cpu_s": 0.0,
+      "week1_cpu_s": 0.0,
+      "max_cpu_s": 0.015625,
+      "median_cpu_s": 0.0,
+      "cpu_budget_s": 2,
+      "would_exceed_budget_weeks": [],
+      "invalid_entry_counts": {
+        "overrides[2]: slot 2 masked this week": 6
+      },
+      "whole_week_failures": 0,
+      "positive_or_unclassified_invalid_entries": 0,
+      "ignored_zero_masked_override_entries": 6,
+      "recovery_status_counts": {}
+    }
+  ],
+  "sha256": {
+    "candidate": "1d00584591cecd1795fff683e68a505464e00a2d7ac0873d4f5b1258c8a5dea4",
+    "baseline": "efa7c00d1d7ac112f269950d020860ed839ed141bd2d60dcc2d7f24361016dbe"
+  },
+  "params": {
+    "candidate": {
+      "balance_fuel_power": 4.0,
+      "balance_pipeline_horizon": 2,
+      "balance_production_power": 2.0,
+      "balance_rate_power": 0.5,
+      "batch_complete_pulse": true,
+      "batch_crude": 1.0,
+      "batch_end_aware": true,
+      "batch_lng": 1.0,
+      "commodity_cost_bias": {
+        "chip_le_raw": 0.0,
+        "chip_mat_raw": 0.0,
+        "wafer": 0.0
+      },
+      "cost_bias": 4.0,
+      "fuel_release_origin_bonus": 4.0,
+      "fuel_release_power": 1.0,
+      "fuel_release_preserve_routes": true,
+      "production_horizon_enabled": true,
+      "production_output_power": 1.0,
+      "release_receiver_cover": 4.0,
+      "route_warning_bias": 1.0,
+      "sales_cover": 4.0,
+      "production_residual_enabled": true
+    },
+    "baseline": {
+      "balance_fuel_power": 4.0,
+      "balance_pipeline_horizon": 2,
+      "balance_production_power": 2.0,
+      "balance_rate_power": 0.5,
+      "batch_complete_pulse": true,
+      "batch_crude": 1.0,
+      "batch_end_aware": true,
+      "batch_lng": 1.0,
+      "commodity_cost_bias": {
+        "chip_le_raw": 0.0,
+        "chip_mat_raw": 0.0,
+        "wafer": 0.0
+      },
+      "cost_bias": 4.0,
+      "fuel_release_origin_bonus": 4.0,
+      "fuel_release_power": 1.0,
+      "fuel_release_preserve_routes": true,
+      "production_horizon_enabled": true,
+      "production_output_power": 1.0,
+      "release_receiver_cover": 4.0,
+      "route_warning_bias": 1.0,
+      "sales_cover": 4.0
+    }
+  },
+  "limitations": [
+    "Native cost screen, NOT isolated sbf compare or certified RSS.",
+    "Same generated episodes; independent policy trajectories; no salted policy seed.",
+    "CPU constructor included; native metering does not enforce fallback.",
+    "Diagnostic invalid entries include ignored zero masked overrides; inspect reasons.",
+    "USD intervals are unnormalized and cannot be converted to RSS without references."
+  ],
+  "paired_cost_delta_usd": 0.0,
+  "paired_cost_delta_90pct_t_interval_usd": null,
+  "candidate_cost_mean_usd": 1249151868.96,
+  "baseline_cost_mean_usd": 1249151868.96,
+  "wins": 0,
+  "ties": 1,
+  "evidence_type": "native_matched_cost_not_rss",
+  "implementation_commit": "d79b2fe52b066184eebda94516cf6101fa51c0cb"
+}

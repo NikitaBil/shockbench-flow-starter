@@ -1,0 +1,188 @@
+{
+  "status": "completed",
+  "task": "full",
+  "entropy": 67890,
+  "episode_ids": [
+    0,
+    1
+  ],
+  "seed": 0,
+  "agent": "agents/team_agent",
+  "sha256": "efa7c00d1d7ac112f269950d020860ed839ed141bd2d60dcc2d7f24361016dbe",
+  "episodes": [
+    {
+      "episode": 0,
+      "weeks": 104,
+      "cost_components_usd": {
+        "freight": 22354261938.1517,
+        "war_risk": 731434496.99746,
+        "tariff": 14066224361.413424,
+        "holding": 39098201206.406906,
+        "queue_holding": 40992658242.356346,
+        "shortage": 2508574114519.2656,
+        "disposal": 36584577003.239136,
+        "shed": 3496490876254.276
+      },
+      "total_cost_usd": 6149439589512.767,
+      "salvage_usd": 9452758509.34,
+      "quantities_by_commodity": {
+        "requested": {
+          "lng": 9985886.72437343,
+          "crude": 836435.7796224689,
+          "nucfuel": 4026864.0,
+          "wafer": 150663542.5251842,
+          "chip_le_raw": 31780912.410898272,
+          "chip_mat_raw": 27890819.791668583,
+          "chip_mat": 31365595.747680467,
+          "chip_le": 33179227.895216186
+        },
+        "executed": {
+          "lng": 9983631.89504705,
+          "crude": 835497.6080464108,
+          "nucfuel": 4026864.0,
+          "wafer": 150640271.89460933,
+          "chip_le_raw": 31780912.410898272,
+          "chip_mat_raw": 27890819.791668583,
+          "chip_mat": 31349185.625998158,
+          "chip_le": 33122689.123716526
+        },
+        "suppressed_visible_spare": {
+          "lng": 834.5608401099986,
+          "crude": 126744.27388660911,
+          "nucfuel": 0.0,
+          "wafer": 2178698.493998579,
+          "chip_le_raw": 7582635.79123678,
+          "chip_mat_raw": 132252.1859395096,
+          "chip_mat": 266401.6947287738,
+          "chip_le": 0.0
+        },
+        "edge_stock_mask_clip": {
+          "lng": 2254.8293263824776,
+          "crude": 938.1715760580719,
+          "nucfuel": 0.0,
+          "wafer": 23270.63057489128,
+          "chip_le_raw": 8.157705622124922e-10,
+          "chip_mat_raw": 5.802576197311282e-10,
+          "chip_mat": 16410.12168230827,
+          "chip_le": 56538.7714996626
+        },
+        "fleet_clip": {
+          "lng": 0.0,
+          "crude": 0.0,
+          "nucfuel": 0.0,
+          "wafer": 0.0,
+          "chip_le_raw": 0.0,
+          "chip_mat_raw": 0.0,
+          "chip_mat": 0.0,
+          "chip_le": 0.0
+        },
+        "override_requested": {
+          "lng": 487096.95000401646,
+          "crude": 333595.11532664666
+        },
+        "override_executed": {
+          "lng": 484024.62241042766,
+          "crude": 331589.51578214957
+        }
+      },
+      "counts": {
+        "tb_fleet_binding_weeks": 0,
+        "ct_fleet_binding_weeks": 0
+      },
+      "invalid": 103,
+      "constructor_cpu_seconds": 0.0625,
+      "max_act_cpu_seconds_with_taps": 0.0625,
+      "first_week_cpu_with_constructor": 0.125
+    },
+    {
+      "episode": 1,
+      "weeks": 104,
+      "cost_components_usd": {
+        "freight": 24894677841.098064,
+        "war_risk": 103487572.4941591,
+        "tariff": 8703727819.19426,
+        "holding": 42481380908.08601,
+        "queue_holding": 7666110815.305301,
+        "shortage": 2355324831091.107,
+        "disposal": 37691761670.941086,
+        "shed": 2730303771912.448
+      },
+      "total_cost_usd": 5195453258433.523,
+      "salvage_usd": 11716491197.15,
+      "quantities_by_commodity": {
+        "requested": {
+          "lng": 9312639.242683738,
+          "crude": 963202.194277081,
+          "nucfuel": 4559688.0,
+          "wafer": 181816728.02070716,
+          "chip_le_raw": 30231311.400353882,
+          "chip_mat_raw": 45598584.60586847,
+          "chip_mat": 49815485.26626704,
+          "chip_le": 32517968.347527064
+        },
+        "executed": {
+          "lng": 9299819.647219539,
+          "crude": 962551.0259808529,
+          "nucfuel": 4559688.0,
+          "wafer": 181590139.91892502,
+          "chip_le_raw": 30218699.08553471,
+          "chip_mat_raw": 45580526.47873899,
+          "chip_mat": 49815485.26626704,
+          "chip_le": 32492431.1690563
+        },
+        "suppressed_visible_spare": {
+          "lng": 1.2232703738845885e-10,
+          "crude": 13808.867785910255,
+          "nucfuel": 0.0,
+          "wafer": 8016607.4448659215,
+          "chip_le_raw": 100006.46259857269,
+          "chip_mat_raw": 679589.0099762605,
+          "chip_mat": 928982.8872317252,
+          "chip_le": 0.0
+        },
+        "edge_stock_mask_clip": {
+          "lng": 12819.595464197515,
+          "crude": 651.1682962284196,
+          "nucfuel": 0.0,
+          "wafer": 226588.10178214073,
+          "chip_le_raw": 12612.31481917024,
+          "chip_mat_raw": 18058.12712947958,
+          "chip_mat": 7.755183162316825e-10,
+          "chip_le": 25537.178470767823
+        },
+        "fleet_clip": {
+          "lng": 0.0,
+          "crude": 0.0,
+          "nucfuel": 0.0,
+          "wafer": 0.0,
+          "chip_le_raw": 0.0,
+          "chip_mat_raw": 0.0,
+          "chip_mat": 0.0,
+          "chip_le": 0.0
+        },
+        "override_requested": {
+          "lng": 745313.6170475917,
+          "crude": 637622.3829131336
+        },
+        "override_executed": {
+          "lng": 745178.6512001537,
+          "crude": 636984.043364782
+        }
+      },
+      "counts": {
+        "tb_fleet_binding_weeks": 0,
+        "ct_fleet_binding_weeks": 0
+      },
+      "invalid": 103,
+      "constructor_cpu_seconds": 0.578125,
+      "max_act_cpu_seconds_with_taps": 0.140625,
+      "first_week_cpu_with_constructor": 0.625
+    }
+  ],
+  "limitations": [
+    "Native replay, no RSS, no isolation or CPU fallback enforcement.",
+    "Physical spare is per-slot opportunity, not additive shared-resource capacity.",
+    "Estimated coverage/transit are not guaranteed ETA or marginal total cost.",
+    "Private execution hooks are offline ground truth, never actor inputs."
+  ]
+}
