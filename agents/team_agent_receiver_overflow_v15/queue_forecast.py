@@ -12,8 +12,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType, SimpleNamespace
 
-import numpy as np
-
 
 if __package__:
     from .contracts import ExpectedArrival, Quantity
@@ -141,8 +139,10 @@ class QueueForecaster:
         reader = ObservationReader(observation)
         sources, events, book = {}, defaultdict(list), []
         incomplete = [issue for issue in state.issues if issue.startswith(("pipeline:", "queue:"))]
-        if not np.all(reader.field("stock.qty")[1]):
-            incomplete.append("queue_forecast:own_state_visibility_incomplete")
+        # Queue completion depends on live cargo, edge/pool rates, permissions,
+        # and transit times. Unrelated on-hand inventory is not an input to the
+        # no-future-dispatch FIFO projection; hiding a stock slot must not erase
+        # valid ETAs for cargo already in transit.
         for cargo in tuple(state.pipeline) + tuple(proposed_pipeline):
             if cargo.edge_id is None or cargo.lane_status == "unknown" or cargo.edge_arrival_week is None:
                 incomplete.append(f"queue_forecast:{cargo.lot_id}:unknown_inbound")

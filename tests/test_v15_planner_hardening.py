@@ -1,5 +1,6 @@
 """Regressions for the v15 receiver constraints and production-planner wiring."""
 
+import importlib
 import importlib.util
 import json
 import sys
@@ -69,6 +70,25 @@ def test_queue_forecast_arrivals_are_selective_and_require_forecaster(monkeypatc
     assert planner._arrival_is_eligible(SimpleNamespace(queue_forecast=object()), queue_arrival)
     assert not planner._arrival_is_eligible(SimpleNamespace(queue_forecast=None), queue_arrival)
     assert not planner._arrival_is_eligible(SimpleNamespace(queue_forecast=object()), wip_arrival)
+
+
+def test_queue_forecast_does_not_depend_on_unrelated_stock_visibility(monkeypatch):
+    monkeypatch.syspath_prepend(str(AGENT))
+    spec = importlib.util.spec_from_file_location("v15_queue_forecast_test", AGENT / "queue_forecast.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    forecaster = module.QueueForecaster.__new__(module.QueueForecaster)
+    forecaster.max_weeks = None
+    forecaster._rates = lambda *_args: ({}, {}, {})
+    state = SimpleNamespace(issues=(), pipeline=(), queues=(), week=1, horizon=1)
+    network = SimpleNamespace(
+        edge_transit_weeks=(), lane_edges=(), chokepoints=(), edge_head=(), edge_tail=(), transit_progress=None
+    )
+
+    forecast = forecaster.forecast(state, {}, network)
+
+    assert forecast.issues == ()
 
 
 def test_recovery_does_not_reserve_late_baseline_cargo_against_early_window(monkeypatch):
