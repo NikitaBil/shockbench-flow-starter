@@ -51,6 +51,7 @@ def test_v15_keeps_unproven_planner_opt_in_and_tracks_full_forecast_horizon():
     assert params["queue_forecast_enabled"] is False
     assert params["planner_options"]["production_horizon"] == 8
     assert params["planner_options"]["include_estimated_arrivals"] is False
+    assert params["planner_options"]["shortage_cost_model"] is True
 
 
 def test_queue_forecast_arrivals_are_selective_and_require_forecaster(monkeypatch):
@@ -89,6 +90,29 @@ def test_queue_forecast_does_not_depend_on_unrelated_stock_visibility(monkeypatc
     forecast = forecaster.forecast(state, {}, network)
 
     assert forecast.issues == ()
+
+
+def test_need_planner_lead_time_uses_observed_multiedge_eta(monkeypatch):
+    monkeypatch.syspath_prepend(str(AGENT))
+    spec = importlib.util.spec_from_file_location("v15_needs_eta_test", AGENT / "needs.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    planner = module.NeedPlanner.__new__(module.NeedPlanner)
+    routes = (
+        SimpleNamespace(source_node=1, edges=(2, 3)),
+        SimpleNamespace(source_node=1, edges=(4,)),
+        SimpleNamespace(source_node=0, edges=(0,)),
+    )
+    network = SimpleNamespace(routes=routes, slots_to={(5, 0): (0, 1, 2)})
+
+    class Reader:
+        tau = {2: 2.0, 3: 5.0, 4: 9.0, 0: 1.0}
+
+        def number(self, _field, edge):
+            return self.tau[edge]
+
+    assert planner._minimum_route_transit_weeks(network, Reader(), 1, 5, 0) == 7
 
 
 def test_recovery_does_not_reserve_late_baseline_cargo_against_early_window(monkeypatch):

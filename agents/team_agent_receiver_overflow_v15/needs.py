@@ -572,7 +572,7 @@ class NeedPlanner:
                 result[node, week] += coefficient * started / restoration
         return result
 
-    def _fuel_replenishment(self, state, needs, network, issues):
+    def _fuel_replenishment(self, state, needs, network, observation, issues):
         """Project net grid fuel requests onto import-capable feeder inventory.
 
         Inventory position offsets order volume, not deadline coverage. Cargo
@@ -580,6 +580,7 @@ class NeedPlanner:
         Alternative feeders share the demand instead of each requesting it all.
         """
         grids = set(self.config["layout"]["grids"])
+        reader = ObservationReader(observation)
         fuel_names = {name for node in grids for name in self.profiles[node]["grid"]["shares"]}
         fuel_ids = {self.commodities[name] for name in fuel_names if name in self.commodities}
         positions = {}
@@ -603,7 +604,17 @@ class NeedPlanner:
                 if stock is None or stock.value is None:
                     issues.append(f"fuel_replenishment:{pair}:unknown_inventory")
                     continue
-                rank = route.nominal_transit_weeks, route.nominal_freight_per_unit, route.slot_id
+                transit = self._minimum_route_transit_weeks(
+                    network, reader, pair[0], need.destination_node, need.commodity_id
+                )
+                # Hidden live transit is not replaced with nominal tau0 for
+                # order timing. Keep an uncertain feeder as a last-resort
+                # candidate; its replenishment order is due immediately.
+                rank = (
+                    float("inf") if transit is None else transit,
+                    route.nominal_freight_per_unit,
+                    route.slot_id,
+                )
                 if pair not in choices or rank < choices[pair][0]:
                     choices[pair] = rank, route
                 positions.setdefault(pair, float(stock.value))
@@ -663,7 +674,10 @@ class NeedPlanner:
                 continue
             pair, (_rank, route) = choices[0]
             # Ordinary terminal arrivals cannot be dispatched again that week.
-            due = max(state.week, need.due_week - route.nominal_transit_weeks - 1)
+            transit = self._minimum_route_transit_weeks(
+                network, reader, pair[0], need.destination_node, need.commodity_id
+            )
+            due = state.week if transit is None else max(state.week, need.due_week - transit - 1)
             key = pair, due, need.priority
             if key not in requests:
                 requests[key] = [0.0, [], []]
@@ -684,7 +698,8 @@ class NeedPlanner:
                     "net grid fuel demand propagated through existing action slots",
                     "feeder stock and inbound import quantities shared once across consumer requests",
                     "inbound with unknown ETA offsets new order volume, not timely coverage or dispatchable stock",
-                    "deadline uses nominal downstream transit plus one pre-dispatch-stock week; not guaranteed ETA",
+                    "deadline uses observed downstream transit plus one pre-dispatch-stock week; "
+                    "hidden transit orders immediately",
                     "deterministic feeder choice; current feasibility and shared capacities belong to allocator",
                     "parents: " + ",".join(parents),
                 ),
@@ -789,7 +804,7 @@ class NeedPlanner:
                         )
                     )
         if self.fuel_replenishment_enabled:
-            result.extend(self._fuel_replenishment(state, result, network, issues))
+            result.extend(self._fuel_replenishment(state, result, network, observation, issues))
         self.last_issues = tuple(dict.fromkeys(issues))
         return tuple(sorted(result, key=need_order_key))
 
