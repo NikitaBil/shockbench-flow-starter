@@ -92,6 +92,20 @@ def test_queue_forecast_does_not_depend_on_unrelated_stock_visibility(monkeypatc
     assert forecast.issues == ()
 
 
+def test_allocator_uses_voll_then_deadline_before_legacy_class_priority(monkeypatch):
+    monkeypatch.syspath_prepend(str(AGENT))
+    spec = importlib.util.spec_from_file_location("v15_allocator_priority_test", AGENT / "allocation.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    allocator = module.Allocator.__new__(module.Allocator)
+    low_voll = SimpleNamespace(need_id="low-voll", priority=4, due_week=1, shortage_cost_per_unit_usd=10.0)
+    critical = SimpleNamespace(need_id="critical", priority=1, due_week=5, shortage_cost_per_unit_usd=1000.0)
+    early = SimpleNamespace(need_id="early", priority=1, due_week=2, shortage_cost_per_unit_usd=1000.0)
+
+    assert sorted((low_voll, critical, early), key=allocator._need_order_key) == [early, critical, low_voll]
+
+
 def test_need_planner_lead_time_uses_observed_multiedge_eta(monkeypatch):
     monkeypatch.syspath_prepend(str(AGENT))
     spec = importlib.util.spec_from_file_location("v15_needs_eta_test", AGENT / "needs.py")

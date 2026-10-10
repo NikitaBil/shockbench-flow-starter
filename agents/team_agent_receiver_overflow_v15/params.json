@@ -8,7 +8,7 @@
     "include_estimated_arrivals": false,
     "include_queue_forecast_arrivals": true,
     "safety_stock": true,
-    "shortage_cost_model": false,
+    "shortage_cost_model": true,
     "fuel_replenishment_enabled": true
   },
   "raw_utility_strength": 0.0,

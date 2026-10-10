@@ -11,13 +11,13 @@ import numpy as np
 
 
 if __package__:
-    from .contracts import AllocationResult, DecisionReason, ResourceUsage, UnmetNeed, need_order_key
+    from .contracts import AllocationResult, DecisionReason, ResourceUsage, UnmetNeed
     from .delivery import DeliveryEvaluator
     from .delivery_eta import CandidateETA
     from .network import NetworkTracker, StaticNetwork
     from .queue_forecast import QueueForecaster
 else:
-    from contracts import AllocationResult, DecisionReason, ResourceUsage, UnmetNeed, need_order_key
+    from contracts import AllocationResult, DecisionReason, ResourceUsage, UnmetNeed
     from delivery import DeliveryEvaluator
     from delivery_eta import CandidateETA
     from network import NetworkTracker, StaticNetwork
@@ -93,6 +93,27 @@ class Allocator:
             -quantity,
             option.slot_id,
         ), eta
+
+    @staticmethod
+    def _need_order_key(need):
+        """Order shared-resource requests by VOLL, deadline, then policy rank.
+
+        The planner's class priority remains the fallback when marginal
+        shortage cost is unknown. When it is known, its USD/native-unit value
+        is the primary signal, so low-value forecast/safety requests cannot
+        consume stock, edge capacity, or fleet ahead of a critical shortage.
+        Earlier receipt deadlines win ties; the policy rank remains a stable
+        tie-breaker (for example, backlog before a forecast at the same date).
+        """
+        priority = float(need.priority)
+        due = int(need.due_week)
+        penalty = need.shortage_cost_per_unit_usd
+        if penalty is None:
+            return (1, -priority, due, need.need_id)
+        penalty = float(penalty)
+        if not math.isfinite(penalty) or penalty < 0:
+            raise ValueError("shortage_cost_per_unit_usd must be finite and nonnegative")
+        return (0, -penalty, due, -priority, need.need_id)
 
     def _weight(self, edge, lane):
         return sum(delta for match, delta in self.fleet_terms.get(edge, ()) if match is None or match == lane)
@@ -188,7 +209,7 @@ class Allocator:
         fleet = dict(fleet_start)
         flows = np.zeros(len(net.routes), dtype=np.float64)
         unmet, reasons, cache = [], [], {}
-        for need_rank, need in enumerate(sorted(needs, key=need_order_key), 1):
+        for need_rank, need in enumerate(sorted(needs, key=self._need_order_key), 1):
             key = need.destination_node, need.commodity_id
             if key not in cache:
                 cache[key] = self.delivery.options(snapshot, *key)
